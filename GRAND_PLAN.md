@@ -131,10 +131,10 @@ Goal: make the repo easy to evolve safely.
 
 - [ ] Define support policy for Fluss versions
 - [ ] Define Go version support policy
-- [ ] Add CI workflow for build, unit tests, lint, and demo smoke checks
-- [ ] Choose linting/formatting stack
-- [ ] Add contribution guide
-- [ ] Add architecture overview doc
+- [x] Add CI workflow for build, unit tests, lint, and demo smoke checks
+- [x] Choose linting/formatting stack
+- [x] Add contribution guide
+- [x] Add architecture overview doc
 - [ ] Add changelog / release notes workflow
 
 Exit criteria:
@@ -504,7 +504,6 @@ Exit criteria:
 - [ ] no first-class Arrow package integration yet
 - [ ] no secured-cluster auth implementation yet
 - [ ] no metrics/tracing integration yet
-- [ ] no CI workflow checked into the repo yet
 - [ ] no public examples beyond minimal snippets and demo stack
 - [ ] no documented compatibility matrix beyond Fluss `0.9.x` intent
 
@@ -532,6 +531,7 @@ Use this section as the short memory of real repo progress.
 - [x] Removed unstable scan assertion from the demo smoke path
 - [x] Aligned module path to `github.com/chiqors/fluss-client-go`
 - [x] Updated demo README to reflect the current direct-Go validation setup
+- [x] Added Phase 0 repo guardrails: CI workflow, contributing guide, and architecture overview
 
 ## Decision Log
 
