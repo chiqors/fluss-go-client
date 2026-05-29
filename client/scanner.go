@@ -2,11 +2,11 @@ package client
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/chiqors/fluss-go-client/internal/pbutil"
-	iproto "github.com/chiqors/fluss-go-client/internal/proto"
+	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
 	"github.com/chiqors/fluss-go-client/protocol"
-	"google.golang.org/protobuf/types/dynamicpb"
+	"google.golang.org/protobuf/proto"
 )
 
 type KVScanner struct {
@@ -30,45 +30,29 @@ func (s *KVScanner) Next(ctx context.Context) (ScanKVResult, error) {
 	if err != nil {
 		return ScanKVResult{}, err
 	}
-	resp, err := s.table.client.rpc.Invoke(ctx, node.Address(), protocol.ScanKV, "ScanKvRequest", "ScanKvResponse", func(m *dynamicpb.Message) error {
-		msg := m.ProtoReflect()
+	resp, err := s.table.client.rpc.Invoke(ctx, node.Address(), protocol.ScanKV, "ScanKvRequest", "ScanKvResponse", func(m proto.Message) error {
+		req, ok := m.(*flusspb.ScanKvRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected scan kv request type %T", m)
+		}
 		if s.started {
-			if err := pbutil.SetBytes(msg, "scanner_id", s.scannerID); err != nil {
-				return err
-			}
+			req.ScannerId = append([]byte(nil), s.scannerID...)
 		} else {
-			req, err := iproto.NewMessage("PbScanReqForBucket")
-			if err != nil {
-				return err
-			}
-			reqMsg := req.ProtoReflect()
-			if err := pbutil.SetInt64(reqMsg, "table_id", info.ID); err != nil {
-				return err
+			bucketReq := &flusspb.PbScanReqForBucket{
+				TableId:  proto.Int64(info.ID),
+				BucketId: proto.Int32(s.bucketID),
 			}
 			if s.partitionID != nil {
-				if err := pbutil.SetInt64(reqMsg, "partition_id", *s.partitionID); err != nil {
-					return err
-				}
-			}
-			if err := pbutil.SetInt32(reqMsg, "bucket_id", s.bucketID); err != nil {
-				return err
+				bucketReq.PartitionId = proto.Int64(*s.partitionID)
 			}
 			if s.limit != nil {
-				if err := pbutil.SetInt64(reqMsg, "limit", *s.limit); err != nil {
-					return err
-				}
+				bucketReq.Limit = proto.Int64(*s.limit)
 			}
-			if err := pbutil.SetMessage(msg, "bucket_scan_req", reqMsg); err != nil {
-				return err
-			}
+			req.BucketScanReq = bucketReq
 		}
-		if err := pbutil.SetInt32(msg, "call_seq_id", s.callSeqID); err != nil {
-			return err
-		}
+		req.CallSeqId = proto.Int32(s.callSeqID)
 		if s.batchSizeBytes > 0 {
-			if err := pbutil.SetInt32(msg, "batch_size_bytes", s.batchSizeBytes); err != nil {
-				return err
-			}
+			req.BatchSizeBytes = proto.Int32(s.batchSizeBytes)
 		}
 		return nil
 	})
@@ -77,21 +61,23 @@ func (s *KVScanner) Next(ctx context.Context) (ScanKVResult, error) {
 	}
 	s.started = true
 	s.callSeqID++
-	r := resp.ProtoReflect()
+	r, ok := resp.(*flusspb.ScanKvResponse)
+	if !ok {
+		return ScanKVResult{}, fmt.Errorf("fluss: unexpected scan kv response type %T", resp)
+	}
+	if r.GetErrorCode() != 0 {
+		return ScanKVResult{}, &protocol.APIError{Code: r.GetErrorCode(), Message: r.GetErrorMessage()}
+	}
 	result := ScanKVResult{}
-	if fd := r.Descriptor().Fields().ByName("scanner_id"); fd != nil && r.Has(fd) {
-		result.ScannerID = append([]byte(nil), r.Get(fd).Bytes()...)
+	if scannerID := r.GetScannerId(); len(scannerID) > 0 {
+		result.ScannerID = append([]byte(nil), scannerID...)
 		s.scannerID = append([]byte(nil), result.ScannerID...)
 	}
-	if fd := r.Descriptor().Fields().ByName("has_more_results"); fd != nil && r.Has(fd) {
-		result.HasMoreResults = r.Get(fd).Bool()
-		s.hasMore = result.HasMoreResults
-	}
-	if fd := r.Descriptor().Fields().ByName("records"); fd != nil && r.Has(fd) {
-		result.Records = append([]byte(nil), r.Get(fd).Bytes()...)
-	}
-	if fd := r.Descriptor().Fields().ByName("log_offset"); fd != nil && r.Has(fd) {
-		v := r.Get(fd).Int()
+	result.HasMoreResults = r.GetHasMoreResults()
+	s.hasMore = result.HasMoreResults
+	result.Records = append([]byte(nil), r.GetRecords()...)
+	if r.LogOffset != nil {
+		v := r.GetLogOffset()
 		result.LogOffset = &v
 	}
 	return result, nil
@@ -109,12 +95,14 @@ func (s *KVScanner) Close(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.table.client.rpc.Invoke(ctx, node.Address(), protocol.ScanKV, "ScanKvRequest", "ScanKvResponse", func(m *dynamicpb.Message) error {
-		msg := m.ProtoReflect()
-		if err := pbutil.SetBytes(msg, "scanner_id", s.scannerID); err != nil {
-			return err
+	_, err = s.table.client.rpc.Invoke(ctx, node.Address(), protocol.ScanKV, "ScanKvRequest", "ScanKvResponse", func(m proto.Message) error {
+		req, ok := m.(*flusspb.ScanKvRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected scan kv close request type %T", m)
 		}
-		return pbutil.SetBool(msg, "close_scanner", true)
+		req.ScannerId = append([]byte(nil), s.scannerID...)
+		req.CloseScanner = proto.Bool(true)
+		return nil
 	})
 	return err
 }

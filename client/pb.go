@@ -3,95 +3,105 @@ package client
 import (
 	"fmt"
 
-	"github.com/chiqors/fluss-go-client/internal/pbutil"
-	iproto "github.com/chiqors/fluss-go-client/internal/proto"
+	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
 	"github.com/chiqors/fluss-go-client/metadata"
-	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/proto"
 )
 
-func buildTablePath(path TablePath) (protoreflect.Message, error) {
-	msg, err := iproto.NewMessage("PbTablePath")
-	if err != nil {
-		return nil, err
+func buildTablePath(path TablePath) *flusspb.PbTablePath {
+	return &flusspb.PbTablePath{
+		DatabaseName: proto.String(path.DatabaseName),
+		TableName:    proto.String(path.TableName),
 	}
-	if err := pbutil.SetString(msg.ProtoReflect(), "database_name", path.DatabaseName); err != nil {
-		return nil, err
-	}
-	if err := pbutil.SetString(msg.ProtoReflect(), "table_name", path.TableName); err != nil {
-		return nil, err
-	}
-	return msg.ProtoReflect(), nil
 }
 
-func buildBucketRecord(name string, partitionID *int64, bucketID int32, payload []byte) (protoreflect.Message, error) {
-	msg, err := iproto.NewMessage(name)
-	if err != nil {
-		return nil, err
+func buildProduceBucketRecord(partitionID *int64, bucketID int32, payload []byte) *flusspb.PbProduceLogReqForBucket {
+	msg := &flusspb.PbProduceLogReqForBucket{
+		BucketId: proto.Int32(bucketID),
+		Records:  payload,
 	}
 	if partitionID != nil {
-		if err := pbutil.SetInt64(msg.ProtoReflect(), "partition_id", *partitionID); err != nil {
-			return nil, err
-		}
+		msg.PartitionId = proto.Int64(*partitionID)
 	}
-	if err := pbutil.SetInt32(msg.ProtoReflect(), "bucket_id", bucketID); err != nil {
-		return nil, err
-	}
-	if err := pbutil.SetBytes(msg.ProtoReflect(), "records", payload); err != nil {
-		return nil, err
-	}
-	return msg.ProtoReflect(), nil
+	return msg
 }
 
-func pbAppendMessage(msg protoreflect.Message, field string, value protoreflect.Message) error {
-	return pbutil.AppendMessage(msg, field, value)
+func buildPutBucketRecord(partitionID *int64, bucketID int32, payload []byte) *flusspb.PbPutKvReqForBucket {
+	msg := &flusspb.PbPutKvReqForBucket{
+		BucketId: proto.Int32(bucketID),
+		Records:  payload,
+	}
+	if partitionID != nil {
+		msg.PartitionId = proto.Int64(*partitionID)
+	}
+	return msg
 }
 
-func pbAppendInt64(msg protoreflect.Message, field string, values ...int64) error {
-	return pbutil.AppendInt64(msg, field, values...)
+func buildLookupBucket(req LookupBucketRequest) *flusspb.PbLookupReqForBucket {
+	msg := &flusspb.PbLookupReqForBucket{
+		BucketId: proto.Int32(req.BucketID),
+		Keys:     append([][]byte(nil), req.Keys...),
+	}
+	if req.PartitionID != nil {
+		msg.PartitionId = proto.Int64(*req.PartitionID)
+	}
+	return msg
 }
 
-func parseServerNode(msg protoreflect.Message) (metadata.ServerNode, error) {
-	nodeIDField, _ := pbutil.Field(msg.Descriptor(), "node_id")
-	hostField, _ := pbutil.Field(msg.Descriptor(), "host")
-	portField, _ := pbutil.Field(msg.Descriptor(), "port")
-	node := metadata.ServerNode{
-		ID:   int32(msg.Get(nodeIDField).Int()),
-		Host: msg.Get(hostField).String(),
-		Port: int32(msg.Get(portField).Int()),
+func buildPrefixLookupBucket(req LookupBucketRequest) *flusspb.PbPrefixLookupReqForBucket {
+	msg := &flusspb.PbPrefixLookupReqForBucket{
+		BucketId: proto.Int32(req.BucketID),
+		Keys:     append([][]byte(nil), req.Keys...),
 	}
-	if listenersField := msg.Descriptor().Fields().ByName("listeners"); listenersField != nil && msg.Has(listenersField) {
-		node.Listeners = msg.Get(listenersField).String()
+	if req.PartitionID != nil {
+		msg.PartitionId = proto.Int64(*req.PartitionID)
 	}
-	if rackField := msg.Descriptor().Fields().ByName("rack"); rackField != nil && msg.Has(rackField) {
-		node.Rack = msg.Get(rackField).String()
-	}
-	return node, nil
+	return msg
 }
 
-func parseTableMetadata(msg protoreflect.Message) (metadata.TableInfo, []metadata.BucketRoute, error) {
-	tablePathField, _ := pbutil.Field(msg.Descriptor(), "table_path")
-	tableIDField, _ := pbutil.Field(msg.Descriptor(), "table_id")
-	schemaIDField, _ := pbutil.Field(msg.Descriptor(), "schema_id")
-	tableJSONField, _ := pbutil.Field(msg.Descriptor(), "table_json")
-	createdTimeField, _ := pbutil.Field(msg.Descriptor(), "created_time")
-	modifiedTimeField, _ := pbutil.Field(msg.Descriptor(), "modified_time")
-	path, err := parseTablePath(msg.Get(tablePathField).Message())
+func buildFetchLogBucket(req FetchBucketRequest) *flusspb.PbFetchLogReqForBucket {
+	msg := &flusspb.PbFetchLogReqForBucket{
+		BucketId:      proto.Int32(req.BucketID),
+		FetchOffset:   proto.Int64(req.FetchOffset),
+		MaxFetchBytes: proto.Int32(req.MaxFetchBytes),
+	}
+	if req.PartitionID != nil {
+		msg.PartitionId = proto.Int64(*req.PartitionID)
+	}
+	return msg
+}
+
+func parseServerNode(node *flusspb.PbServerNode) metadata.ServerNode {
+	out := metadata.ServerNode{
+		ID:   node.GetNodeId(),
+		Host: node.GetHost(),
+		Port: node.GetPort(),
+	}
+	if node.Listeners != nil {
+		out.Listeners = node.GetListeners()
+	}
+	if node.Rack != nil {
+		out.Rack = node.GetRack()
+	}
+	return out
+}
+
+func parseTableMetadata(msg *flusspb.PbTableMetadata) (metadata.TableInfo, []metadata.BucketRoute, error) {
+	path, err := parseTablePath(msg.GetTablePath())
 	if err != nil {
 		return metadata.TableInfo{}, nil, err
 	}
 	info := metadata.TableInfo{
 		Path:         path,
-		ID:           msg.Get(tableIDField).Int(),
-		SchemaID:     int32(msg.Get(schemaIDField).Int()),
-		TableJSON:    append([]byte(nil), msg.Get(tableJSONField).Bytes()...),
-		CreatedTime:  msg.Get(createdTimeField).Int(),
-		ModifiedTime: msg.Get(modifiedTimeField).Int(),
+		ID:           msg.GetTableId(),
+		SchemaID:     msg.GetSchemaId(),
+		TableJSON:    append([]byte(nil), msg.GetTableJson()...),
+		CreatedTime:  msg.GetCreatedTime(),
+		ModifiedTime: msg.GetModifiedTime(),
 	}
 	var routes []metadata.BucketRoute
-	bucketsField, _ := pbutil.Field(msg.Descriptor(), "bucket_metadata")
-	bucketList := msg.Get(bucketsField).List()
-	for i := 0; i < bucketList.Len(); i++ {
-		route, err := parseBucketMetadata(info.ID, nil, bucketList.Get(i).Message())
+	for _, bucket := range msg.GetBucketMetadata() {
+		route, err := parseBucketMetadata(info.ID, nil, bucket)
 		if err != nil {
 			return metadata.TableInfo{}, nil, err
 		}
@@ -100,17 +110,13 @@ func parseTableMetadata(msg protoreflect.Message) (metadata.TableInfo, []metadat
 	return info, routes, nil
 }
 
-func parsePartitionMetadata(msg protoreflect.Message) ([]metadata.BucketRoute, error) {
-	tableIDField, _ := pbutil.Field(msg.Descriptor(), "table_id")
-	partitionIDField, _ := pbutil.Field(msg.Descriptor(), "partition_id")
-	bucketsField, _ := pbutil.Field(msg.Descriptor(), "bucket_metadata")
-	tableID := msg.Get(tableIDField).Int()
-	partitionID := msg.Get(partitionIDField).Int()
-	list := msg.Get(bucketsField).List()
-	routes := make([]metadata.BucketRoute, 0, list.Len())
-	for i := 0; i < list.Len(); i++ {
+func parsePartitionMetadata(msg *flusspb.PbPartitionMetadata) ([]metadata.BucketRoute, error) {
+	routes := make([]metadata.BucketRoute, 0, len(msg.GetBucketMetadata()))
+	tableID := msg.GetTableId()
+	partitionID := msg.GetPartitionId()
+	for _, bucket := range msg.GetBucketMetadata() {
 		pid := partitionID
-		route, err := parseBucketMetadata(tableID, &pid, list.Get(i).Message())
+		route, err := parseBucketMetadata(tableID, &pid, bucket)
 		if err != nil {
 			return nil, err
 		}
@@ -119,26 +125,19 @@ func parsePartitionMetadata(msg protoreflect.Message) ([]metadata.BucketRoute, e
 	return routes, nil
 }
 
-func parseBucketMetadata(tableID int64, partitionID *int64, msg protoreflect.Message) (metadata.BucketRoute, error) {
-	bucketIDField, _ := pbutil.Field(msg.Descriptor(), "bucket_id")
-	leaderIDField, _ := pbutil.Field(msg.Descriptor(), "leader_id")
-	leaderEpochField, _ := pbutil.Field(msg.Descriptor(), "leader_epoch")
+func parseBucketMetadata(tableID int64, partitionID *int64, msg *flusspb.PbBucketMetadata) (metadata.BucketRoute, error) {
 	route := metadata.BucketRoute{
 		TableID:      tableID,
-		BucketID:     int32(msg.Get(bucketIDField).Int()),
-		LeaderID:     int32(msg.Get(leaderIDField).Int()),
+		BucketID:     msg.GetBucketId(),
+		LeaderID:     msg.GetLeaderId(),
 		HasPartition: partitionID != nil,
+		Replicas:     append([]int32(nil), msg.GetReplicaId()...),
 	}
 	if partitionID != nil {
 		route.PartitionID = *partitionID
 	}
-	if msg.Has(leaderEpochField) {
-		route.LeaderEpoch = int32(msg.Get(leaderEpochField).Int())
-	}
-	replicasField, _ := pbutil.Field(msg.Descriptor(), "replica_id")
-	replicas := msg.Get(replicasField).List()
-	for i := 0; i < replicas.Len(); i++ {
-		route.Replicas = append(route.Replicas, int32(replicas.Get(i).Int()))
+	if msg.LeaderEpoch != nil {
+		route.LeaderEpoch = msg.GetLeaderEpoch()
 	}
 	if route.LeaderID == 0 {
 		return metadata.BucketRoute{}, fmt.Errorf("leader missing for table=%d bucket=%d", tableID, route.BucketID)
@@ -146,11 +145,12 @@ func parseBucketMetadata(tableID int64, partitionID *int64, msg protoreflect.Mes
 	return route, nil
 }
 
-func parseTablePath(msg protoreflect.Message) (TablePath, error) {
-	dbField, _ := pbutil.Field(msg.Descriptor(), "database_name")
-	tableField, _ := pbutil.Field(msg.Descriptor(), "table_name")
+func parseTablePath(msg *flusspb.PbTablePath) (TablePath, error) {
+	if msg == nil {
+		return TablePath{}, fmt.Errorf("nil table path")
+	}
 	return TablePath{
-		DatabaseName: msg.Get(dbField).String(),
-		TableName:    msg.Get(tableField).String(),
+		DatabaseName: msg.GetDatabaseName(),
+		TableName:    msg.GetTableName(),
 	}, nil
 }

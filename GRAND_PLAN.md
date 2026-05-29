@@ -67,7 +67,7 @@ Success means a Go team can:
 - [x] Go module and package layout foundation
 - [x] Native TCP RPC framing
 - [x] Request multiplexing and correlation handling
-- [~] Runtime proto descriptor loading from embedded `internal/proto/fluss.proto`
+- [x] Generated protobuf transport migration is complete; internal protocol handling is generated-protobuf based
 - [x] API version negotiation
 - [x] Basic pluggable auth interface
 - [x] Metadata cache and leader routing foundation
@@ -164,10 +164,10 @@ Goal: make the wire layer stable and debuggable.
 
 - [x] Public SDK surface should remain Go-native
 - [x] Internal wire/protocol layer should target generated protobuf Go code
-- [~] Dynamic proto loading remains a temporary bootstrap foundation until generated protobuf migration lands
-- [~] Introduce protobuf code generation workflow
-- [ ] Migrate request builders from dynamic messages to generated protobuf structs
-- [ ] Keep generated protobuf code internal and avoid exposing it as the main SDK surface
+- [x] Removed dynamic proto runtime compatibility layer after generated protobuf migration landed
+- [x] Introduce protobuf code generation workflow
+- [x] Migrate core request builders from dynamic messages to generated protobuf structs
+- [x] Keep generated protobuf code internal and avoid exposing it as the main SDK surface
 
 ### Core
 
@@ -560,6 +560,10 @@ Use this section as the short memory of real repo progress.
 - [x] Added first lightweight writer abstractions for append and upsert flows
 - [x] Recorded architecture direction: Go-native public API with generated protobuf internals as the target
 - [x] Added initial protobuf generation scaffold under `internal/proto/gen`
+- [x] Replaced deprecated runtime `.proto` parsing with generated descriptors and message factories
+- [x] Migrated admin, write, lookup, fetch, limit-scan, and KV-scan request builders to generated protobuf types
+- [x] Migrated hot-path table response parsing from reflection-heavy dynamic messages to generated protobuf responses
+- [x] Removed `InvokeDynamic`, deleted dynamic proto registry usage, and migrated mock integration tests to generated protobuf fixtures
 
 ## Decision Log
 

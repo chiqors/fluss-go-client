@@ -2,12 +2,12 @@ package client
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/chiqors/fluss-go-client/internal/pbutil"
+	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
 	"github.com/chiqors/fluss-go-client/metadata"
 	"github.com/chiqors/fluss-go-client/protocol"
-	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/types/dynamicpb"
+	"google.golang.org/protobuf/proto"
 )
 
 type AdminClient struct {
@@ -15,59 +15,62 @@ type AdminClient struct {
 }
 
 func (a *AdminClient) ListDatabases(ctx context.Context, includeSummary bool) ([]string, []DatabaseSummary, error) {
-	resp, err := a.invokeAny(ctx, protocol.ListDatabases, "ListDatabasesRequest", "ListDatabasesResponse", func(msg protoreflect.Message) error {
-		return pbutil.SetBool(msg, "include_summary", includeSummary)
+	resp, err := a.invokeAny(ctx, protocol.ListDatabases, "ListDatabasesRequest", "ListDatabasesResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.ListDatabasesRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected list databases request type %T", msg)
+		}
+		req.IncludeSummary = proto.Bool(includeSummary)
+		return nil
 	})
 	if err != nil {
 		return nil, nil, err
 	}
-	r := resp.ProtoReflect()
-	namesField, _ := pbutil.Field(r.Descriptor(), "database_name")
-	namesList := r.Get(namesField).List()
-	names := make([]string, 0, namesList.Len())
-	for i := 0; i < namesList.Len(); i++ {
-		names = append(names, namesList.Get(i).String())
+	r, ok := resp.(*flusspb.ListDatabasesResponse)
+	if !ok {
+		return nil, nil, fmt.Errorf("fluss: unexpected list databases response type %T", resp)
 	}
-	var summaries []DatabaseSummary
-	if summariesField := r.Descriptor().Fields().ByName("database_summary"); summariesField != nil {
-		list := r.Get(summariesField).List()
-		summaries = make([]DatabaseSummary, 0, list.Len())
-		for i := 0; i < list.Len(); i++ {
-			item := list.Get(i).Message()
-			nameField, _ := pbutil.Field(item.Descriptor(), "database_name")
-			createdField, _ := pbutil.Field(item.Descriptor(), "created_time")
-			countField, _ := pbutil.Field(item.Descriptor(), "table_count")
-			summaries = append(summaries, DatabaseSummary{
-				DatabaseName: item.Get(nameField).String(),
-				CreatedTime:  item.Get(createdField).Int(),
-				TableCount:   int32(item.Get(countField).Int()),
-			})
-		}
+	names := append([]string(nil), r.GetDatabaseName()...)
+	summaries := make([]DatabaseSummary, 0, len(r.GetDatabaseSummary()))
+	for _, item := range r.GetDatabaseSummary() {
+		summaries = append(summaries, DatabaseSummary{
+			DatabaseName: item.GetDatabaseName(),
+			CreatedTime:  item.GetCreatedTime(),
+			TableCount:   item.GetTableCount(),
+		})
 	}
 	return names, summaries, nil
 }
 
 func (a *AdminClient) DatabaseExists(ctx context.Context, name string) (bool, error) {
-	resp, err := a.invokeAny(ctx, protocol.DatabaseExists, "DatabaseExistsRequest", "DatabaseExistsResponse", func(msg protoreflect.Message) error {
-		return pbutil.SetString(msg, "database_name", name)
+	resp, err := a.invokeAny(ctx, protocol.DatabaseExists, "DatabaseExistsRequest", "DatabaseExistsResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.DatabaseExistsRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected database exists request type %T", msg)
+		}
+		req.DatabaseName = proto.String(name)
+		return nil
 	})
 	if err != nil {
 		return false, err
 	}
-	field, _ := pbutil.Field(resp.ProtoReflect().Descriptor(), "exists")
-	return resp.ProtoReflect().Get(field).Bool(), nil
+	r, ok := resp.(*flusspb.DatabaseExistsResponse)
+	if !ok {
+		return false, fmt.Errorf("fluss: unexpected database exists response type %T", resp)
+	}
+	return r.GetExists(), nil
 }
 
 func (a *AdminClient) CreateDatabase(ctx context.Context, name string, databaseJSON []byte, ignoreIfExists bool) error {
-	_, err := a.invokeCoordinator(ctx, protocol.CreateDatabase, "CreateDatabaseRequest", "CreateDatabaseResponse", func(msg protoreflect.Message) error {
-		if err := pbutil.SetString(msg, "database_name", name); err != nil {
-			return err
+	_, err := a.invokeCoordinator(ctx, protocol.CreateDatabase, "CreateDatabaseRequest", "CreateDatabaseResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.CreateDatabaseRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected create database request type %T", msg)
 		}
-		if err := pbutil.SetBool(msg, "ignore_if_exists", ignoreIfExists); err != nil {
-			return err
-		}
+		req.DatabaseName = proto.String(name)
+		req.IgnoreIfExists = proto.Bool(ignoreIfExists)
 		if len(databaseJSON) > 0 {
-			return pbutil.SetBytes(msg, "database_json", databaseJSON)
+			req.DatabaseJson = append([]byte(nil), databaseJSON...)
 		}
 		return nil
 	})
@@ -75,122 +78,130 @@ func (a *AdminClient) CreateDatabase(ctx context.Context, name string, databaseJ
 }
 
 func (a *AdminClient) DropDatabase(ctx context.Context, name string, ignoreIfNotExists, cascade bool) error {
-	_, err := a.invokeCoordinator(ctx, protocol.DropDatabase, "DropDatabaseRequest", "DropDatabaseResponse", func(msg protoreflect.Message) error {
-		if err := pbutil.SetString(msg, "database_name", name); err != nil {
-			return err
+	_, err := a.invokeCoordinator(ctx, protocol.DropDatabase, "DropDatabaseRequest", "DropDatabaseResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.DropDatabaseRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected drop database request type %T", msg)
 		}
-		if err := pbutil.SetBool(msg, "ignore_if_not_exists", ignoreIfNotExists); err != nil {
-			return err
-		}
-		return pbutil.SetBool(msg, "cascade", cascade)
+		req.DatabaseName = proto.String(name)
+		req.IgnoreIfNotExists = proto.Bool(ignoreIfNotExists)
+		req.Cascade = proto.Bool(cascade)
+		return nil
 	})
 	return err
 }
 
 func (a *AdminClient) GetDatabaseInfo(ctx context.Context, name string) (DatabaseInfo, error) {
-	resp, err := a.invokeAny(ctx, protocol.GetDatabaseInfo, "GetDatabaseInfoRequest", "GetDatabaseInfoResponse", func(msg protoreflect.Message) error {
-		return pbutil.SetString(msg, "database_name", name)
+	resp, err := a.invokeAny(ctx, protocol.GetDatabaseInfo, "GetDatabaseInfoRequest", "GetDatabaseInfoResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.GetDatabaseInfoRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected get database info request type %T", msg)
+		}
+		req.DatabaseName = proto.String(name)
+		return nil
 	})
 	if err != nil {
 		return DatabaseInfo{}, err
 	}
-	r := resp.ProtoReflect()
-	jsonField, _ := pbutil.Field(r.Descriptor(), "database_json")
-	createdField, _ := pbutil.Field(r.Descriptor(), "created_time")
-	modifiedField, _ := pbutil.Field(r.Descriptor(), "modified_time")
+	r, ok := resp.(*flusspb.GetDatabaseInfoResponse)
+	if !ok {
+		return DatabaseInfo{}, fmt.Errorf("fluss: unexpected get database info response type %T", resp)
+	}
 	return DatabaseInfo{
-		JSON:         append([]byte(nil), r.Get(jsonField).Bytes()...),
-		CreatedTime:  r.Get(createdField).Int(),
-		ModifiedTime: r.Get(modifiedField).Int(),
+		JSON:         append([]byte(nil), r.GetDatabaseJson()...),
+		CreatedTime:  r.GetCreatedTime(),
+		ModifiedTime: r.GetModifiedTime(),
 	}, nil
 }
 
 func (a *AdminClient) ListTables(ctx context.Context, database string) ([]string, error) {
-	resp, err := a.invokeAny(ctx, protocol.ListTables, "ListTablesRequest", "ListTablesResponse", func(msg protoreflect.Message) error {
-		return pbutil.SetString(msg, "database_name", database)
+	resp, err := a.invokeAny(ctx, protocol.ListTables, "ListTablesRequest", "ListTablesResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.ListTablesRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected list tables request type %T", msg)
+		}
+		req.DatabaseName = proto.String(database)
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	field, _ := pbutil.Field(resp.ProtoReflect().Descriptor(), "table_name")
-	list := resp.ProtoReflect().Get(field).List()
-	out := make([]string, 0, list.Len())
-	for i := 0; i < list.Len(); i++ {
-		out = append(out, list.Get(i).String())
+	r, ok := resp.(*flusspb.ListTablesResponse)
+	if !ok {
+		return nil, fmt.Errorf("fluss: unexpected list tables response type %T", resp)
 	}
-	return out, nil
+	return append([]string(nil), r.GetTableName()...), nil
 }
 
 func (a *AdminClient) TableExists(ctx context.Context, path TablePath) (bool, error) {
-	resp, err := a.invokeAny(ctx, protocol.TableExists, "TableExistsRequest", "TableExistsResponse", func(msg protoreflect.Message) error {
-		p, err := buildTablePath(path)
-		if err != nil {
-			return err
+	resp, err := a.invokeAny(ctx, protocol.TableExists, "TableExistsRequest", "TableExistsResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.TableExistsRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected table exists request type %T", msg)
 		}
-		return pbutil.SetMessage(msg, "table_path", p)
+		req.TablePath = buildTablePath(path)
+		return nil
 	})
 	if err != nil {
 		return false, err
 	}
-	field, _ := pbutil.Field(resp.ProtoReflect().Descriptor(), "exists")
-	return resp.ProtoReflect().Get(field).Bool(), nil
+	r, ok := resp.(*flusspb.TableExistsResponse)
+	if !ok {
+		return false, fmt.Errorf("fluss: unexpected table exists response type %T", resp)
+	}
+	return r.GetExists(), nil
 }
 
 func (a *AdminClient) CreateTable(ctx context.Context, path TablePath, tableJSON []byte, ignoreIfExists bool) error {
-	_, err := a.invokeCoordinator(ctx, protocol.CreateTable, "CreateTableRequest", "CreateTableResponse", func(msg protoreflect.Message) error {
-		p, err := buildTablePath(path)
-		if err != nil {
-			return err
+	_, err := a.invokeCoordinator(ctx, protocol.CreateTable, "CreateTableRequest", "CreateTableResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.CreateTableRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected create table request type %T", msg)
 		}
-		if err := pbutil.SetMessage(msg, "table_path", p); err != nil {
-			return err
-		}
-		if err := pbutil.SetBytes(msg, "table_json", tableJSON); err != nil {
-			return err
-		}
-		return pbutil.SetBool(msg, "ignore_if_exists", ignoreIfExists)
+		req.TablePath = buildTablePath(path)
+		req.TableJson = append([]byte(nil), tableJSON...)
+		req.IgnoreIfExists = proto.Bool(ignoreIfExists)
+		return nil
 	})
 	return err
 }
 
 func (a *AdminClient) DropTable(ctx context.Context, path TablePath, ignoreIfNotExists bool) error {
-	_, err := a.invokeCoordinator(ctx, protocol.DropTable, "DropTableRequest", "DropTableResponse", func(msg protoreflect.Message) error {
-		p, err := buildTablePath(path)
-		if err != nil {
-			return err
+	_, err := a.invokeCoordinator(ctx, protocol.DropTable, "DropTableRequest", "DropTableResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.DropTableRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected drop table request type %T", msg)
 		}
-		if err := pbutil.SetMessage(msg, "table_path", p); err != nil {
-			return err
-		}
-		return pbutil.SetBool(msg, "ignore_if_not_exists", ignoreIfNotExists)
+		req.TablePath = buildTablePath(path)
+		req.IgnoreIfNotExists = proto.Bool(ignoreIfNotExists)
+		return nil
 	})
 	return err
 }
 
 func (a *AdminClient) GetTableInfo(ctx context.Context, path TablePath) (TableInfo, error) {
-	resp, err := a.invokeAny(ctx, protocol.GetTableInfo, "GetTableInfoRequest", "GetTableInfoResponse", func(msg protoreflect.Message) error {
-		p, err := buildTablePath(path)
-		if err != nil {
-			return err
+	resp, err := a.invokeAny(ctx, protocol.GetTableInfo, "GetTableInfoRequest", "GetTableInfoResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.GetTableInfoRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected get table info request type %T", msg)
 		}
-		return pbutil.SetMessage(msg, "table_path", p)
+		req.TablePath = buildTablePath(path)
+		return nil
 	})
 	if err != nil {
 		return TableInfo{}, err
 	}
-	r := resp.ProtoReflect()
-	tableIDField, _ := pbutil.Field(r.Descriptor(), "table_id")
-	schemaIDField, _ := pbutil.Field(r.Descriptor(), "schema_id")
-	tableJSONField, _ := pbutil.Field(r.Descriptor(), "table_json")
-	createdField, _ := pbutil.Field(r.Descriptor(), "created_time")
-	modifiedField, _ := pbutil.Field(r.Descriptor(), "modified_time")
+	r, ok := resp.(*flusspb.GetTableInfoResponse)
+	if !ok {
+		return TableInfo{}, fmt.Errorf("fluss: unexpected get table info response type %T", resp)
+	}
 	info := TableInfo{
 		Path:         path,
-		ID:           r.Get(tableIDField).Int(),
-		SchemaID:     int32(r.Get(schemaIDField).Int()),
-		JSON:         append([]byte(nil), r.Get(tableJSONField).Bytes()...),
-		CreatedTime:  r.Get(createdField).Int(),
-		ModifiedTime: r.Get(modifiedField).Int(),
+		ID:           r.GetTableId(),
+		SchemaID:     r.GetSchemaId(),
+		JSON:         append([]byte(nil), r.GetTableJson()...),
+		CreatedTime:  r.GetCreatedTime(),
+		ModifiedTime: r.GetModifiedTime(),
 	}
 	a.client.metadata.SetTable(metadata.TableInfo{
 		Path:         path,
@@ -204,78 +215,79 @@ func (a *AdminClient) GetTableInfo(ctx context.Context, path TablePath) (TableIn
 }
 
 func (a *AdminClient) GetTableSchema(ctx context.Context, path TablePath, schemaID *int32) (SchemaInfo, error) {
-	resp, err := a.invokeAny(ctx, protocol.GetTableSchema, "GetTableSchemaRequest", "GetTableSchemaResponse", func(msg protoreflect.Message) error {
-		p, err := buildTablePath(path)
-		if err != nil {
-			return err
+	resp, err := a.invokeAny(ctx, protocol.GetTableSchema, "GetTableSchemaRequest", "GetTableSchemaResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.GetTableSchemaRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected get table schema request type %T", msg)
 		}
-		if err := pbutil.SetMessage(msg, "table_path", p); err != nil {
-			return err
-		}
+		req.TablePath = buildTablePath(path)
 		if schemaID != nil {
-			return pbutil.SetInt32(msg, "schema_id", *schemaID)
+			req.SchemaId = proto.Int32(*schemaID)
 		}
 		return nil
 	})
 	if err != nil {
 		return SchemaInfo{}, err
 	}
-	r := resp.ProtoReflect()
-	schemaIDField, _ := pbutil.Field(r.Descriptor(), "schema_id")
-	jsonField, _ := pbutil.Field(r.Descriptor(), "schema_json")
+	r, ok := resp.(*flusspb.GetTableSchemaResponse)
+	if !ok {
+		return SchemaInfo{}, fmt.Errorf("fluss: unexpected get table schema response type %T", resp)
+	}
 	return SchemaInfo{
-		SchemaID: int32(r.Get(schemaIDField).Int()),
-		JSON:     append([]byte(nil), r.Get(jsonField).Bytes()...),
+		SchemaID: r.GetSchemaId(),
+		JSON:     append([]byte(nil), r.GetSchemaJson()...),
 	}, nil
 }
 
 func (a *AdminClient) ListPartitionInfos(ctx context.Context, path TablePath) ([]PartitionInfo, error) {
-	resp, err := a.invokeAny(ctx, protocol.ListPartitionInfos, "ListPartitionInfosRequest", "ListPartitionInfosResponse", func(msg protoreflect.Message) error {
-		p, err := buildTablePath(path)
-		if err != nil {
-			return err
+	resp, err := a.invokeAny(ctx, protocol.ListPartitionInfos, "ListPartitionInfosRequest", "ListPartitionInfosResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.ListPartitionInfosRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected list partition infos request type %T", msg)
 		}
-		return pbutil.SetMessage(msg, "table_path", p)
+		req.TablePath = buildTablePath(path)
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	field, _ := pbutil.Field(resp.ProtoReflect().Descriptor(), "partitions_info")
-	list := resp.ProtoReflect().Get(field).List()
-	out := make([]PartitionInfo, 0, list.Len())
-	for i := 0; i < list.Len(); i++ {
-		item := list.Get(i).Message()
-		idField, _ := pbutil.Field(item.Descriptor(), "partition_id")
-		specField, _ := pbutil.Field(item.Descriptor(), "partition_spec")
-		info := PartitionInfo{PartitionID: item.Get(idField).Int()}
-		specMsg := item.Get(specField).Message()
-		specListField, _ := pbutil.Field(specMsg.Descriptor(), "partition_key_values")
-		specList := specMsg.Get(specListField).List()
-		for j := 0; j < specList.Len(); j++ {
-			kv := specList.Get(j).Message()
-			keyField, _ := pbutil.Field(kv.Descriptor(), "key")
-			valueField, _ := pbutil.Field(kv.Descriptor(), "value")
-			info.PartitionSpec = append(info.PartitionSpec, PartitionKV{
-				Key:   kv.Get(keyField).String(),
-				Value: kv.Get(valueField).String(),
-			})
+	r, ok := resp.(*flusspb.ListPartitionInfosResponse)
+	if !ok {
+		return nil, fmt.Errorf("fluss: unexpected list partition infos response type %T", resp)
+	}
+	out := make([]PartitionInfo, 0, len(r.GetPartitionsInfo()))
+	for _, item := range r.GetPartitionsInfo() {
+		info := PartitionInfo{PartitionID: item.GetPartitionId()}
+		if spec := item.GetPartitionSpec(); spec != nil {
+			for _, kv := range spec.GetPartitionKeyValues() {
+				info.PartitionSpec = append(info.PartitionSpec, PartitionKV{
+					Key:   kv.GetKey(),
+					Value: kv.GetValue(),
+				})
+			}
 		}
 		out = append(out, info)
 	}
 	return out, nil
 }
 
-func (a *AdminClient) invokeAny(ctx context.Context, api protocol.APIKey, reqName, respName string, build func(protoreflect.Message) error) (protoreflect.ProtoMessage, error) {
+func (a *AdminClient) invokeAny(ctx context.Context, api protocol.APIKey, reqName, respName string, build func(proto.Message) error) (proto.Message, error) {
 	addr := a.client.endpoints[0]
 	if coordinator, ok := a.client.metadata.Coordinator(); ok {
 		addr = coordinator.Address()
 	}
-	return a.client.rpc.Invoke(ctx, addr, api, reqName, respName, func(m *dynamicpb.Message) error {
-		return build(m.ProtoReflect())
-	})
+	msg, err := a.client.rpc.Invoke(ctx, addr, api, reqName, respName, build)
+	if err != nil {
+		return nil, err
+	}
+	resp, ok := msg.(proto.Message)
+	if !ok {
+		return nil, fmt.Errorf("fluss: unexpected proto response type %T", msg)
+	}
+	return resp, nil
 }
 
-func (a *AdminClient) invokeCoordinator(ctx context.Context, api protocol.APIKey, reqName, respName string, build func(protoreflect.Message) error) (protoreflect.ProtoMessage, error) {
+func (a *AdminClient) invokeCoordinator(ctx context.Context, api protocol.APIKey, reqName, respName string, build func(proto.Message) error) (proto.Message, error) {
 	if _, ok := a.client.metadata.Coordinator(); !ok {
 		if err := a.client.RefreshMetadata(ctx, nil, nil); err != nil {
 			return nil, err

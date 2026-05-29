@@ -2,13 +2,12 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"sort"
 
-	"github.com/chiqors/fluss-go-client/internal/pbutil"
-	iproto "github.com/chiqors/fluss-go-client/internal/proto"
+	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
 	"github.com/chiqors/fluss-go-client/protocol"
-	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/types/dynamicpb"
+	"google.golang.org/protobuf/proto"
 )
 
 type TableClient struct {
@@ -49,32 +48,23 @@ func (t *TableClient) AppendLog(ctx context.Context, acks int32, timeoutMs int32
 	}
 	var out []ProduceResult
 	for addr, batchList := range grouped {
-		resp, err := t.client.rpc.Invoke(ctx, addr, protocol.ProduceLog, "ProduceLogRequest", "ProduceLogResponse", func(m *dynamicpb.Message) error {
-			msg := m.ProtoReflect()
-			if err := pbutil.SetInt32(msg, "acks", acks); err != nil {
-				return err
+		resp, err := t.client.rpc.Invoke(ctx, addr, protocol.ProduceLog, "ProduceLogRequest", "ProduceLogResponse", func(m proto.Message) error {
+			req, ok := m.(*flusspb.ProduceLogRequest)
+			if !ok {
+				return fmt.Errorf("fluss: unexpected produce log request type %T", m)
 			}
-			if err := pbutil.SetInt64(msg, "table_id", tableInfo.ID); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt32(msg, "timeout_ms", timeoutMs); err != nil {
-				return err
-			}
+			req.Acks = proto.Int32(acks)
+			req.TableId = proto.Int64(tableInfo.ID)
+			req.TimeoutMs = proto.Int32(timeoutMs)
 			for _, batch := range batchList {
-				item, err := buildBucketRecord("PbProduceLogReqForBucket", batch.PartitionID, batch.BucketID, batch.Records)
-				if err != nil {
-					return err
-				}
-				if err := pbutil.AppendMessage(msg, "buckets_req", item); err != nil {
-					return err
-				}
+				req.BucketsReq = append(req.BucketsReq, buildProduceBucketRecord(batch.PartitionID, batch.BucketID, batch.Records))
 			}
 			return nil
 		})
 		if err != nil {
 			return nil, err
 		}
-		results, err := parseProduceResults(resp.ProtoReflect())
+		results, err := parseProduceResults(resp.(proto.Message))
 		if err != nil {
 			return nil, err
 		}
@@ -95,40 +85,27 @@ func (t *TableClient) UpsertKV(ctx context.Context, acks int32, timeoutMs int32,
 	}
 	var out []PutResult
 	for addr, batchList := range grouped {
-		resp, err := t.client.rpc.Invoke(ctx, addr, protocol.PutKV, "PutKvRequest", "PutKvResponse", func(m *dynamicpb.Message) error {
-			msg := m.ProtoReflect()
-			if err := pbutil.SetInt32(msg, "acks", acks); err != nil {
-				return err
+		resp, err := t.client.rpc.Invoke(ctx, addr, protocol.PutKV, "PutKvRequest", "PutKvResponse", func(m proto.Message) error {
+			req, ok := m.(*flusspb.PutKvRequest)
+			if !ok {
+				return fmt.Errorf("fluss: unexpected put kv request type %T", m)
 			}
-			if err := pbutil.SetInt64(msg, "table_id", tableInfo.ID); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt32(msg, "timeout_ms", timeoutMs); err != nil {
-				return err
-			}
-			if err := pbutil.AppendInt32(msg, "target_columns", targetColumns...); err != nil {
-				return err
-			}
+			req.Acks = proto.Int32(acks)
+			req.TableId = proto.Int64(tableInfo.ID)
+			req.TimeoutMs = proto.Int32(timeoutMs)
+			req.TargetColumns = append(req.TargetColumns, targetColumns...)
 			if aggMode != nil {
-				if err := pbutil.SetInt32(msg, "agg_mode", *aggMode); err != nil {
-					return err
-				}
+				req.AggMode = proto.Int32(*aggMode)
 			}
 			for _, batch := range batchList {
-				item, err := buildBucketRecord("PbPutKvReqForBucket", batch.PartitionID, batch.BucketID, batch.Records)
-				if err != nil {
-					return err
-				}
-				if err := pbutil.AppendMessage(msg, "buckets_req", item); err != nil {
-					return err
-				}
+				req.BucketsReq = append(req.BucketsReq, buildPutBucketRecord(batch.PartitionID, batch.BucketID, batch.Records))
 			}
 			return nil
 		})
 		if err != nil {
 			return nil, err
 		}
-		results, err := parsePutResults(resp.ProtoReflect())
+		results, err := parsePutResults(resp.(proto.Message))
 		if err != nil {
 			return nil, err
 		}
@@ -152,26 +129,21 @@ func (t *TableClient) PrefixLookup(ctx context.Context, reqs []LookupBucketReque
 	}
 	var out []PrefixLookupBucketValues
 	for addr, items := range grouped {
-		resp, err := t.client.rpc.Invoke(ctx, addr, protocol.PrefixLookup, "PrefixLookupRequest", "PrefixLookupResponse", func(m *dynamicpb.Message) error {
-			msg := m.ProtoReflect()
-			if err := pbutil.SetInt64(msg, "table_id", tableInfo.ID); err != nil {
-				return err
+		resp, err := t.client.rpc.Invoke(ctx, addr, protocol.PrefixLookup, "PrefixLookupRequest", "PrefixLookupResponse", func(m proto.Message) error {
+			req, ok := m.(*flusspb.PrefixLookupRequest)
+			if !ok {
+				return fmt.Errorf("fluss: unexpected prefix lookup request type %T", m)
 			}
+			req.TableId = proto.Int64(tableInfo.ID)
 			for _, item := range items {
-				pm, err := buildLookupBucket("PbPrefixLookupReqForBucket", item)
-				if err != nil {
-					return err
-				}
-				if err := pbutil.AppendMessage(msg, "buckets_req", pm); err != nil {
-					return err
-				}
+				req.BucketsReq = append(req.BucketsReq, buildPrefixLookupBucket(item))
 			}
 			return nil
 		})
 		if err != nil {
 			return nil, err
 		}
-		results, err := parsePrefixLookupResults(resp.ProtoReflect())
+		results, err := parsePrefixLookupResults(resp.(proto.Message))
 		if err != nil {
 			return nil, err
 		}
@@ -191,65 +163,33 @@ func (t *TableClient) FetchLog(ctx context.Context, followerServerID int32, maxB
 	}
 	var out []FetchedBucket
 	for addr, items := range grouped {
-		resp, err := t.client.rpc.Invoke(ctx, addr, protocol.FetchLog, "FetchLogRequest", "FetchLogResponse", func(m *dynamicpb.Message) error {
-			msg := m.ProtoReflect()
-			if err := pbutil.SetInt32(msg, "follower_server_id", followerServerID); err != nil {
-				return err
+		resp, err := t.client.rpc.Invoke(ctx, addr, protocol.FetchLog, "FetchLogRequest", "FetchLogResponse", func(m proto.Message) error {
+			req, ok := m.(*flusspb.FetchLogRequest)
+			if !ok {
+				return fmt.Errorf("fluss: unexpected fetch log request type %T", m)
 			}
-			if err := pbutil.SetInt32(msg, "max_bytes", maxBytes); err != nil {
-				return err
-			}
+			req.FollowerServerId = proto.Int32(followerServerID)
+			req.MaxBytes = proto.Int32(maxBytes)
 			if maxWaitMs != nil {
-				if err := pbutil.SetInt32(msg, "max_wait_ms", *maxWaitMs); err != nil {
-					return err
-				}
+				req.MaxWaitMs = proto.Int32(*maxWaitMs)
 			}
 			if minBytes != nil {
-				if err := pbutil.SetInt32(msg, "min_bytes", *minBytes); err != nil {
-					return err
-				}
+				req.MinBytes = proto.Int32(*minBytes)
 			}
-			tableReq, err := iproto.NewMessage("PbFetchLogReqForTable")
-			if err != nil {
-				return err
-			}
-			tableMsg := tableReq.ProtoReflect()
-			if err := pbutil.SetInt64(tableMsg, "table_id", tableInfo.ID); err != nil {
-				return err
-			}
-			if err := pbutil.SetBool(tableMsg, "projection_pushdown_enabled", false); err != nil {
-				return err
+			tableReq := &flusspb.PbFetchLogReqForTable{
+				TableId:                   proto.Int64(tableInfo.ID),
+				ProjectionPushdownEnabled: proto.Bool(false),
 			}
 			for _, item := range items {
-				req, err := iproto.NewMessage("PbFetchLogReqForBucket")
-				if err != nil {
-					return err
-				}
-				reqMsg := req.ProtoReflect()
-				if item.PartitionID != nil {
-					if err := pbutil.SetInt64(reqMsg, "partition_id", *item.PartitionID); err != nil {
-						return err
-					}
-				}
-				if err := pbutil.SetInt32(reqMsg, "bucket_id", item.BucketID); err != nil {
-					return err
-				}
-				if err := pbutil.SetInt64(reqMsg, "fetch_offset", item.FetchOffset); err != nil {
-					return err
-				}
-				if err := pbutil.SetInt32(reqMsg, "max_fetch_bytes", item.MaxFetchBytes); err != nil {
-					return err
-				}
-				if err := pbutil.AppendMessage(tableMsg, "buckets_req", reqMsg); err != nil {
-					return err
-				}
+				tableReq.BucketsReq = append(tableReq.BucketsReq, buildFetchLogBucket(item))
 			}
-			return pbutil.AppendMessage(msg, "tables_req", tableMsg)
+			req.TablesReq = append(req.TablesReq, tableReq)
+			return nil
 		})
 		if err != nil {
 			return nil, err
 		}
-		results, err := parseFetchResults(resp.ProtoReflect())
+		results, err := parseFetchResults(resp.(proto.Message))
 		if err != nil {
 			return nil, err
 		}
@@ -267,34 +207,32 @@ func (t *TableClient) LimitScan(ctx context.Context, partitionID *int64, bucketI
 	if err != nil {
 		return LimitScanResult{}, err
 	}
-	resp, err := t.client.rpc.Invoke(ctx, node.Address(), protocol.LimitScan, "LimitScanRequest", "LimitScanResponse", func(m *dynamicpb.Message) error {
-		msg := m.ProtoReflect()
-		if err := pbutil.SetInt64(msg, "table_id", tableInfo.ID); err != nil {
-			return err
+	resp, err := t.client.rpc.Invoke(ctx, node.Address(), protocol.LimitScan, "LimitScanRequest", "LimitScanResponse", func(m proto.Message) error {
+		req, ok := m.(*flusspb.LimitScanRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected limit scan request type %T", m)
 		}
+		req.TableId = proto.Int64(tableInfo.ID)
 		if partitionID != nil {
-			if err := pbutil.SetInt64(msg, "partition_id", *partitionID); err != nil {
-				return err
-			}
+			req.PartitionId = proto.Int64(*partitionID)
 		}
-		if err := pbutil.SetInt32(msg, "bucket_id", bucketID); err != nil {
-			return err
-		}
-		return pbutil.SetInt32(msg, "limit", limit)
+		req.BucketId = proto.Int32(bucketID)
+		req.Limit = proto.Int32(limit)
+		return nil
 	})
 	if err != nil {
 		return LimitScanResult{}, err
 	}
-	r := resp.ProtoReflect()
-	errorField := r.Descriptor().Fields().ByName("error_code")
-	if errorField != nil && r.Has(errorField) && r.Get(errorField).Int() != 0 {
-		return LimitScanResult{}, &protocol.APIError{Code: int32(r.Get(errorField).Int())}
+	r, ok := resp.(*flusspb.LimitScanResponse)
+	if !ok {
+		return LimitScanResult{}, fmt.Errorf("fluss: unexpected limit scan response type %T", resp)
 	}
-	isLogField, _ := pbutil.Field(r.Descriptor(), "is_log_table")
-	recordsField, _ := pbutil.Field(r.Descriptor(), "records")
+	if r.GetErrorCode() != 0 {
+		return LimitScanResult{}, &protocol.APIError{Code: r.GetErrorCode(), Message: r.GetErrorMessage()}
+	}
 	return LimitScanResult{
-		IsLogTable: r.Get(isLogField).Bool(),
-		Records:    append([]byte(nil), r.Get(recordsField).Bytes()...),
+		IsLogTable: r.GetIsLogTable(),
+		Records:    append([]byte(nil), r.GetRecords()...),
 	}, nil
 }
 
@@ -375,65 +313,34 @@ func (t *TableClient) lookupCommon(ctx context.Context, api protocol.APIKey, req
 	}
 	var out []LookupBucketValues
 	for addr, items := range grouped {
-		resp, err := t.client.rpc.Invoke(ctx, addr, api, reqName, respName, func(m *dynamicpb.Message) error {
-			msg := m.ProtoReflect()
-			if err := pbutil.SetInt64(msg, "table_id", tableInfo.ID); err != nil {
-				return err
+		resp, err := t.client.rpc.Invoke(ctx, addr, api, reqName, respName, func(m proto.Message) error {
+			req, ok := m.(*flusspb.LookupRequest)
+			if !ok {
+				return fmt.Errorf("fluss: unexpected lookup request type %T", m)
 			}
+			req.TableId = proto.Int64(tableInfo.ID)
 			if insertIfNotExists != nil {
-				if err := pbutil.SetBool(msg, "insert_if_not_exists", *insertIfNotExists); err != nil {
-					return err
-				}
+				req.InsertIfNotExists = proto.Bool(*insertIfNotExists)
 			}
 			if acks != nil {
-				if err := pbutil.SetInt32(msg, "acks", *acks); err != nil {
-					return err
-				}
+				req.Acks = proto.Int32(*acks)
 			}
 			if timeoutMs != nil {
-				if err := pbutil.SetInt32(msg, "timeout_ms", *timeoutMs); err != nil {
-					return err
-				}
+				req.TimeoutMs = proto.Int32(*timeoutMs)
 			}
 			for _, item := range items {
-				pm, err := buildLookupBucket("PbLookupReqForBucket", item)
-				if err != nil {
-					return err
-				}
-				if err := pbutil.AppendMessage(msg, "buckets_req", pm); err != nil {
-					return err
-				}
+				req.BucketsReq = append(req.BucketsReq, buildLookupBucket(item))
 			}
 			return nil
 		})
 		if err != nil {
 			return nil, err
 		}
-		results, err := parseLookupResults(resp.ProtoReflect())
+		results, err := parseLookupResults(resp.(proto.Message))
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, results...)
 	}
 	return out, nil
-}
-
-func buildLookupBucket(name string, req LookupBucketRequest) (protoreflect.Message, error) {
-	msg, err := iproto.NewMessage(name)
-	if err != nil {
-		return nil, err
-	}
-	r := msg.ProtoReflect()
-	if req.PartitionID != nil {
-		if err := pbutil.SetInt64(r, "partition_id", *req.PartitionID); err != nil {
-			return nil, err
-		}
-	}
-	if err := pbutil.SetInt32(r, "bucket_id", req.BucketID); err != nil {
-		return nil, err
-	}
-	if err := pbutil.AppendBytes(r, "keys", req.Keys...); err != nil {
-		return nil, err
-	}
-	return r, nil
 }

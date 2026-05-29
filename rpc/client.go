@@ -11,12 +11,11 @@ import (
 
 	"github.com/chiqors/fluss-go-client/auth"
 	"github.com/chiqors/fluss-go-client/codec"
-	"github.com/chiqors/fluss-go-client/internal/pbutil"
 	iproto "github.com/chiqors/fluss-go-client/internal/proto"
+	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
 	"github.com/chiqors/fluss-go-client/protocol"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/types/dynamicpb"
 )
 
 type Config struct {
@@ -75,12 +74,12 @@ func (c *Client) Close() error {
 	return err
 }
 
-func (c *Client) Invoke(ctx context.Context, addr string, apiKey protocol.APIKey, reqName, respName string, build func(*dynamicpb.Message) error) (protoreflect.ProtoMessage, error) {
+func (c *Client) Invoke(ctx context.Context, addr string, apiKey protocol.APIKey, reqName, respName string, build func(proto.Message) error) (protoreflect.ProtoMessage, error) {
 	conn, err := c.getConn(ctx, addr)
 	if err != nil {
 		return nil, err
 	}
-	req, err := iproto.NewMessage(reqName)
+	req, err := iproto.New(reqName)
 	if err != nil {
 		return nil, err
 	}
@@ -127,23 +126,16 @@ func (c *Client) getConn(ctx context.Context, addr string) (*connection, error) 
 }
 
 func (c *connection) negotiate(ctx context.Context) error {
-	msg, err := c.invoke(ctx, protocol.APIVersions, mustMessage("ApiVersionsRequest", func(m *dynamicpb.Message) error {
-		if err := pbutil.SetString(m.ProtoReflect(), "client_software_name", c.cfg.ClientSoftwareName); err != nil {
-			return err
-		}
-		return pbutil.SetString(m.ProtoReflect(), "client_software_version", c.cfg.ClientSoftwareVersion)
-	}), "ApiVersionsResponse", c.nextRequestID())
+	msg, err := c.invoke(ctx, protocol.APIVersions, &flusspb.ApiVersionsRequest{
+		ClientSoftwareName:    proto.String(c.cfg.ClientSoftwareName),
+		ClientSoftwareVersion: proto.String(c.cfg.ClientSoftwareVersion),
+	}, "ApiVersionsResponse", c.nextRequestID())
 	if err != nil {
 		return err
 	}
-	resp := msg.ProtoReflect()
-	fd, _ := pbutil.Field(resp.Descriptor(), "api_versions")
-	list := resp.Get(fd).List()
-	for i := 0; i < list.Len(); i++ {
-		item := list.Get(i).Message()
-		apiKeyField, _ := pbutil.Field(item.Descriptor(), "api_key")
-		maxVersionField, _ := pbutil.Field(item.Descriptor(), "max_version")
-		c.versions[protocol.APIKey(item.Get(apiKeyField).Int())] = int16(item.Get(maxVersionField).Int())
+	resp := msg.(*flusspb.ApiVersionsResponse)
+	for _, item := range resp.GetApiVersions() {
+		c.versions[protocol.APIKey(item.GetApiKey())] = int16(item.GetMaxVersion())
 	}
 	return nil
 }
@@ -157,22 +149,19 @@ func (c *connection) authenticate(ctx context.Context) error {
 		return err
 	}
 	for {
-		msg, err := c.invoke(ctx, protocol.Authenticate, mustMessage("AuthenticateRequest", func(m *dynamicpb.Message) error {
-			if err := pbutil.SetString(m.ProtoReflect(), "protocol", c.cfg.Authenticator.Protocol()); err != nil {
-				return err
-			}
-			return pbutil.SetBytes(m.ProtoReflect(), "token", token)
-		}), "AuthenticateResponse", c.nextRequestID())
+		msg, err := c.invoke(ctx, protocol.Authenticate, &flusspb.AuthenticateRequest{
+			Protocol: proto.String(c.cfg.Authenticator.Protocol()),
+			Token:    token,
+		}, "AuthenticateResponse", c.nextRequestID())
 		if err != nil {
 			return err
 		}
-		resp := msg.ProtoReflect()
-		fd, _ := pbutil.Field(resp.Descriptor(), "challenge")
-		if !resp.Has(fd) {
+		resp := msg.(*flusspb.AuthenticateResponse)
+		if len(resp.GetChallenge()) == 0 {
 			return nil
 		}
 		var ok bool
-		token, ok, err = c.cfg.Authenticator.NextToken(ctx, resp.Get(fd).Bytes())
+		token, ok, err = c.cfg.Authenticator.NextToken(ctx, resp.GetChallenge())
 		if err != nil {
 			return err
 		}
@@ -249,29 +238,23 @@ func (c *connection) resolve(reqID int32, payload []byte, _ string) {
 		return
 	}
 	call := value.(pendingCall)
-	msg, err := iproto.NewMessage(call.respName)
+	msg, err := iproto.New(call.respName)
 	if err == nil {
 		err = proto.Unmarshal(payload, msg)
 	}
-	call.ch <- responseOrError{msg: msg, err: err}
+	call.ch <- responseOrError{msg: msg.(protoreflect.ProtoMessage), err: err}
 }
 
 func (c *connection) resolveError(reqID int32, payload []byte) {
-	msg, err := iproto.NewMessage("ErrorResponse")
-	if err != nil {
-		c.failAll(err)
-		return
-	}
+	msg := &flusspb.ErrorResponse{}
+	var err error
 	if err = proto.Unmarshal(payload, msg); err != nil {
 		c.failAll(err)
 		return
 	}
-	rmsg := msg.ProtoReflect()
-	codeField, _ := pbutil.Field(rmsg.Descriptor(), "error_code")
-	messageField, _ := pbutil.Field(rmsg.Descriptor(), "error_message")
-	apiErr := &protocol.APIError{Code: int32(rmsg.Get(codeField).Int())}
-	if rmsg.Has(messageField) {
-		apiErr.Message = rmsg.Get(messageField).String()
+	apiErr := &protocol.APIError{Code: msg.GetErrorCode()}
+	if msg.ErrorMessage != nil {
+		apiErr.Message = msg.GetErrorMessage()
 	}
 	if reqID == 0 {
 		c.failAll(apiErr)
@@ -296,15 +279,4 @@ func (c *connection) failAll(err error) {
 
 func (c *connection) close() error {
 	return c.conn.Close()
-}
-
-func mustMessage(name string, build func(*dynamicpb.Message) error) *dynamicpb.Message {
-	msg, err := iproto.NewMessage(name)
-	if err != nil {
-		panic(err)
-	}
-	if err := build(msg); err != nil {
-		panic(err)
-	}
-	return msg
 }

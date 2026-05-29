@@ -54,14 +54,33 @@ Important packages:
 - [metadata](./metadata): metadata cache and routing helpers
 - [protocol](./protocol): API keys and protocol-level errors
 - [auth](./auth): auth hooks
-- [internal/proto](./internal/proto): embedded proto descriptors
+- [internal/proto](./internal/proto): internal protobuf source, generation entrypoint, and generated message factory
+- [internal/proto/gen](./internal/proto/gen): generated protobuf Go code used by the transport layer
 - [demo/fluss-paimon](./demo/fluss-paimon): real-container smoke-test environment
 
 Current state:
 
 - the foundation is real and working
+- generated protobuf Go types are now the internal protocol foundation
 - many table operations are still raw byte-oriented
 - production-grade writer/scanner abstractions are not complete yet
+
+## Proto-First Development Rule
+
+This repo now develops the internal Fluss protocol layer proto-first.
+
+Agents should treat the Fluss `.proto` contract as the implementation foundation for RPC behavior:
+
+- update the proto definition first when protocol message shape changes are intentionally introduced in-repo
+- regenerate protobuf Go code before wiring new RPC request/response handling
+- prefer generated protobuf message types over reflection or dynamic message construction
+- keep generated protobuf types internal to the SDK implementation rather than exposing them as the public API
+
+In practice this means:
+
+- public API design stays Go-native in [client](./client)
+- internal RPC payloads should be expressed with generated types from [internal/proto/gen](./internal/proto/gen)
+- tests that assert protocol behavior should prefer generated protobuf fixtures over dynamic message building
 
 ## How To Work In This Repo
 
@@ -78,6 +97,7 @@ When implementing:
 - preserve backward compatibility for public APIs unless there is a strong reason not to
 - if a public API must change, update docs and note it in `GRAND_PLAN.md`
 - prefer Go-native public types even when internal transport uses protobuf-generated code
+- if the work touches RPC message shapes or protocol handling, inspect the proto and generated types first
 
 When blocked:
 
@@ -191,7 +211,7 @@ Prefer:
 - lightweight helper clients over giant god objects
 - explicit constructors such as `client.Dial(...)`
 - Go naming over Java naming when the concepts are equivalent
-- generated protobuf Go code as an internal transport detail when the protocol layer matures
+- generated protobuf Go code as the default internal transport implementation
 
 Avoid:
 
@@ -220,8 +240,8 @@ When porting behavior:
 
 For protocol implementation strategy:
 
-- dynamic proto loading is acceptable as a bootstrap step
-- generated protobuf Go code is the preferred long-term internal implementation
+- generated protobuf Go code is the active internal implementation strategy
+- the proto file and generated protobuf code should be updated together when protocol work changes
 - public SDK APIs should remain Go-native even after the internal migration
 
 ## Demo Environment Guidance

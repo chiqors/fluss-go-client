@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 
+	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
 	"github.com/chiqors/fluss-go-client/metadata"
 	"github.com/chiqors/fluss-go-client/protocol"
 	"github.com/chiqors/fluss-go-client/rpc"
-	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/types/dynamicpb"
+	"google.golang.org/protobuf/proto"
 )
 
 type Client struct {
@@ -60,18 +60,19 @@ func (c *Client) RefreshMetadata(ctx context.Context, tablePaths []TablePath, pa
 	if coordinator, ok := c.metadata.Coordinator(); ok {
 		addr = coordinator.Address()
 	}
-	msg, err := c.rpc.Invoke(ctx, addr, protocol.GetMetadata, "MetadataRequest", "MetadataResponse", func(m *dynamicpb.Message) error {
-		dm := m.ProtoReflect()
-		for _, path := range tablePaths {
-			pm, err := buildTablePath(path)
-			if err != nil {
-				return err
-			}
-			if err := pbAppendMessage(dm, "table_path", pm); err != nil {
-				return err
-			}
+	msg, err := c.rpc.Invoke(ctx, addr, protocol.GetMetadata, "MetadataRequest", "MetadataResponse", func(m proto.Message) error {
+		req, ok := m.(*flusspb.MetadataRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected metadata request type %T", m)
 		}
-		return pbAppendInt64(dm, "partitions_id", partitionIDs...)
+		for _, path := range tablePaths {
+			req.TablePath = append(req.TablePath, &flusspb.PbTablePath{
+				DatabaseName: proto.String(path.DatabaseName),
+				TableName:    proto.String(path.TableName),
+			})
+		}
+		req.PartitionsId = append(req.PartitionsId, partitionIDs...)
+		return nil
 	})
 	if err != nil {
 		return err
@@ -79,48 +80,34 @@ func (c *Client) RefreshMetadata(ctx context.Context, tablePaths []TablePath, pa
 	return c.ingestMetadata(msg)
 }
 
-func (c *Client) ingestMetadata(message protoreflect.ProtoMessage) error {
-	resp := message.ProtoReflect()
-	if fd := resp.Descriptor().Fields().ByName("coordinator_server"); fd != nil && resp.Has(fd) {
-		node, err := parseServerNode(resp.Get(fd).Message())
+func (c *Client) ingestMetadata(message proto.Message) error {
+	resp, ok := message.(*flusspb.MetadataResponse)
+	if !ok {
+		return fmt.Errorf("fluss: unexpected metadata response type %T", message)
+	}
+	if resp.CoordinatorServer != nil {
+		c.metadata.SetCoordinator(parseServerNode(resp.GetCoordinatorServer()))
+	}
+	for _, node := range resp.GetTabletServers() {
+		c.metadata.UpsertServer(parseServerNode(node))
+	}
+	for _, tableMeta := range resp.GetTableMetadata() {
+		info, routes, err := parseTableMetadata(tableMeta)
 		if err != nil {
 			return err
 		}
-		c.metadata.SetCoordinator(node)
-	}
-	if fd := resp.Descriptor().Fields().ByName("tablet_servers"); fd != nil {
-		list := resp.Get(fd).List()
-		for i := 0; i < list.Len(); i++ {
-			node, err := parseServerNode(list.Get(i).Message())
-			if err != nil {
-				return err
-			}
-			c.metadata.UpsertServer(node)
+		c.metadata.SetTable(info)
+		for _, route := range routes {
+			c.metadata.SetRoute(route)
 		}
 	}
-	if fd := resp.Descriptor().Fields().ByName("table_metadata"); fd != nil {
-		list := resp.Get(fd).List()
-		for i := 0; i < list.Len(); i++ {
-			info, routes, err := parseTableMetadata(list.Get(i).Message())
-			if err != nil {
-				return err
-			}
-			c.metadata.SetTable(info)
-			for _, route := range routes {
-				c.metadata.SetRoute(route)
-			}
+	for _, partitionMeta := range resp.GetPartitionMetadata() {
+		routes, err := parsePartitionMetadata(partitionMeta)
+		if err != nil {
+			return err
 		}
-	}
-	if fd := resp.Descriptor().Fields().ByName("partition_metadata"); fd != nil {
-		list := resp.Get(fd).List()
-		for i := 0; i < list.Len(); i++ {
-			routes, err := parsePartitionMetadata(list.Get(i).Message())
-			if err != nil {
-				return err
-			}
-			for _, route := range routes {
-				c.metadata.SetRoute(route)
-			}
+		for _, route := range routes {
+			c.metadata.SetRoute(route)
 		}
 	}
 	return nil

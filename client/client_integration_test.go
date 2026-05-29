@@ -10,11 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chiqors/fluss-go-client/internal/pbutil"
-	iproto "github.com/chiqors/fluss-go-client/internal/proto"
+	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
 	"github.com/chiqors/fluss-go-client/protocol"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 type mockFlussServer struct {
@@ -113,17 +111,9 @@ func encodeSuccessResponse(reqID int32, payload []byte) []byte {
 }
 
 func encodeErrorResponse(reqID int32, code int32, message string) []byte {
-	msg, err := iproto.NewMessage("ErrorResponse")
-	if err != nil {
-		panic(err)
-	}
-	if err := pbutil.SetInt32(msg.ProtoReflect(), "error_code", code); err != nil {
-		panic(err)
-	}
+	msg := &flusspb.ErrorResponse{ErrorCode: proto.Int32(code)}
 	if message != "" {
-		if err := pbutil.SetString(msg.ProtoReflect(), "error_message", message); err != nil {
-			panic(err)
-		}
+		msg.ErrorMessage = proto.String(message)
 	}
 	payload, err := proto.Marshal(msg)
 	if err != nil {
@@ -138,73 +128,62 @@ func encodeErrorResponse(reqID int32, code int32, message string) []byte {
 	return buf
 }
 
-func mustMessage(t *testing.T, name string, build func(protoreflect.Message) error) []byte {
+func mustMarshal(t *testing.T, msg proto.Message) []byte {
 	t.Helper()
-	msg, err := iproto.NewMessage(name)
-	if err != nil {
-		t.Fatalf("new message %s: %v", name, err)
-	}
-	if err := build(msg.ProtoReflect()); err != nil {
-		t.Fatalf("build %s: %v", name, err)
-	}
 	payload, err := proto.Marshal(msg)
 	if err != nil {
-		t.Fatalf("marshal %s: %v", name, err)
+		t.Fatalf("marshal %T: %v", msg, err)
 	}
 	return payload
 }
 
-func addAPIVersion(t *testing.T, parent protoreflect.Message, api protocol.APIKey, version int32) {
-	t.Helper()
-	msg, err := iproto.NewMessage("PbApiVersion")
-	if err != nil {
-		t.Fatalf("PbApiVersion: %v", err)
+func apiVersionsResponse(apis ...protocol.APIKey) *flusspb.ApiVersionsResponse {
+	resp := &flusspb.ApiVersionsResponse{}
+	for _, api := range apis {
+		resp.ApiVersions = append(resp.ApiVersions, &flusspb.PbApiVersion{
+			ApiKey:     proto.Int32(int32(api)),
+			MinVersion: proto.Int32(0),
+			MaxVersion: proto.Int32(0),
+		})
 	}
-	if err := pbutil.SetInt32(msg.ProtoReflect(), "api_key", int32(api)); err != nil {
-		t.Fatal(err)
-	}
-	if err := pbutil.SetInt32(msg.ProtoReflect(), "min_version", 0); err != nil {
-		t.Fatal(err)
-	}
-	if err := pbutil.SetInt32(msg.ProtoReflect(), "max_version", version); err != nil {
-		t.Fatal(err)
-	}
-	if err := pbutil.AppendMessage(parent, "api_versions", msg.ProtoReflect()); err != nil {
-		t.Fatal(err)
+	return resp
+}
+
+func serverNode(nodeID int32, host string, port int32) *flusspb.PbServerNode {
+	return &flusspb.PbServerNode{
+		NodeId: proto.Int32(nodeID),
+		Host:   proto.String(host),
+		Port:   proto.Int32(port),
 	}
 }
 
-func serverNodeMessage(t *testing.T, nodeID int32, host string, port int32) protoreflect.Message {
-	t.Helper()
-	msg, err := iproto.NewMessage("PbServerNode")
-	if err != nil {
-		t.Fatalf("PbServerNode: %v", err)
+func testTablePath(db, table string) *flusspb.PbTablePath {
+	return &flusspb.PbTablePath{
+		DatabaseName: proto.String(db),
+		TableName:    proto.String(table),
 	}
-	if err := pbutil.SetInt32(msg.ProtoReflect(), "node_id", nodeID); err != nil {
-		t.Fatal(err)
-	}
-	if err := pbutil.SetString(msg.ProtoReflect(), "host", host); err != nil {
-		t.Fatal(err)
-	}
-	if err := pbutil.SetInt32(msg.ProtoReflect(), "port", port); err != nil {
-		t.Fatal(err)
-	}
-	return msg.ProtoReflect()
 }
 
-func tablePathMessage(t *testing.T, db, table string) protoreflect.Message {
-	t.Helper()
-	msg, err := iproto.NewMessage("PbTablePath")
-	if err != nil {
-		t.Fatalf("PbTablePath: %v", err)
+func metadataResponseForSingleBucket(host string, port int32, path TablePath, tableID int64, schemaID int32) *flusspb.MetadataResponse {
+	node := serverNode(1, host, port)
+	return &flusspb.MetadataResponse{
+		CoordinatorServer: node,
+		TabletServers:     []*flusspb.PbServerNode{node},
+		TableMetadata: []*flusspb.PbTableMetadata{{
+			TablePath:    testTablePath(path.DatabaseName, path.TableName),
+			TableId:      proto.Int64(tableID),
+			SchemaId:     proto.Int32(schemaID),
+			TableJson:    []byte(`{}`),
+			CreatedTime:  proto.Int64(1),
+			ModifiedTime: proto.Int64(1),
+			BucketMetadata: []*flusspb.PbBucketMetadata{{
+				BucketId:    proto.Int32(0),
+				LeaderId:    proto.Int32(1),
+				ReplicaId:   []int32{1},
+				LeaderEpoch: proto.Int32(1),
+			}},
+		}},
 	}
-	if err := pbutil.SetString(msg.ProtoReflect(), "database_name", db); err != nil {
-		t.Fatal(err)
-	}
-	if err := pbutil.SetString(msg.ProtoReflect(), "table_name", table); err != nil {
-		t.Fatal(err)
-	}
-	return msg.ProtoReflect()
 }
 
 func TestDialAndAdminFlow(t *testing.T) {
@@ -223,171 +202,88 @@ func TestDialAndAdminFlow(t *testing.T) {
 
 	srv.on(protocol.APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
-		return mustMessage(t, "ApiVersionsResponse", func(m protoreflect.Message) error {
-			for _, api := range []protocol.APIKey{
-				protocol.APIVersions,
-				protocol.GetMetadata,
-				protocol.ListDatabases,
-				protocol.DatabaseExists,
-				protocol.GetTableInfo,
-				protocol.GetTableSchema,
-				protocol.ListTables,
-				protocol.TableExists,
-				protocol.ListPartitionInfos,
-				protocol.LimitScan,
-			} {
-				addAPIVersion(t, m, api, 0)
-			}
-			return nil
-		}), nil
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(
+			protocol.APIVersions,
+			protocol.GetMetadata,
+			protocol.ListDatabases,
+			protocol.DatabaseExists,
+			protocol.GetTableInfo,
+			protocol.GetTableSchema,
+			protocol.ListTables,
+			protocol.TableExists,
+			protocol.ListPartitionInfos,
+			protocol.LimitScan,
+		)), nil
 	})
 
 	srv.on(protocol.GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
-		return mustMessage(t, "MetadataResponse", func(m protoreflect.Message) error {
-			coord := serverNodeMessage(t, 1, host, int32(port))
-			if err := pbutil.SetMessage(m, "coordinator_server", coord); err != nil {
-				return err
-			}
-			if err := pbutil.AppendMessage(m, "tablet_servers", coord); err != nil {
-				return err
-			}
-
-			tableMeta, err := iproto.NewMessage("PbTableMetadata")
-			if err != nil {
-				return err
-			}
-			tm := tableMeta.ProtoReflect()
-			if err := pbutil.SetMessage(tm, "table_path", tablePathMessage(t, "demo", "events")); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt64(tm, "table_id", 10); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt32(tm, "schema_id", 3); err != nil {
-				return err
-			}
-			if err := pbutil.SetBytes(tm, "table_json", []byte(`{"name":"events"}`)); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt64(tm, "created_time", 1); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt64(tm, "modified_time", 2); err != nil {
-				return err
-			}
-
-			bucketMeta, err := iproto.NewMessage("PbBucketMetadata")
-			if err != nil {
-				return err
-			}
-			bm := bucketMeta.ProtoReflect()
-			if err := pbutil.SetInt32(bm, "bucket_id", 0); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt32(bm, "leader_id", 1); err != nil {
-				return err
-			}
-			if err := pbutil.AppendInt32(bm, "replica_id", 1); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt32(bm, "leader_epoch", 1); err != nil {
-				return err
-			}
-			if err := pbutil.AppendMessage(tm, "bucket_metadata", bm); err != nil {
-				return err
-			}
-			return pbutil.AppendMessage(m, "table_metadata", tm)
-		}), nil
+		resp := metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "events"}, 10, 3)
+		resp.TableMetadata[0].TableJson = []byte(`{"name":"events"}`)
+		resp.TableMetadata[0].CreatedTime = proto.Int64(1)
+		resp.TableMetadata[0].ModifiedTime = proto.Int64(2)
+		return mustMarshal(t, resp), nil
 	})
 
 	srv.on(protocol.ListDatabases, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
-		return mustMessage(t, "ListDatabasesResponse", func(m protoreflect.Message) error {
-			if err := pbutil.AppendString(m, "database_name", "demo"); err != nil {
-				return err
-			}
-			summary, err := iproto.NewMessage("PbDatabaseSummary")
-			if err != nil {
-				return err
-			}
-			sm := summary.ProtoReflect()
-			if err := pbutil.SetString(sm, "database_name", "demo"); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt64(sm, "created_time", 123); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt32(sm, "table_count", 1); err != nil {
-				return err
-			}
-			return pbutil.AppendMessage(m, "database_summary", sm)
+		return mustMarshal(t, &flusspb.ListDatabasesResponse{
+			DatabaseName: []string{"demo"},
+			DatabaseSummary: []*flusspb.PbDatabaseSummary{{
+				DatabaseName: proto.String("demo"),
+				CreatedTime:  proto.Int64(123),
+				TableCount:   proto.Int32(1),
+			}},
 		}), nil
 	})
 
 	srv.on(protocol.DatabaseExists, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
-		req, err := iproto.NewMessage("DatabaseExistsRequest")
-		if err != nil {
-			return nil, err
-		}
+		req := &flusspb.DatabaseExistsRequest{}
 		if err := proto.Unmarshal(payload, req); err != nil {
 			return nil, err
 		}
-		field, _ := pbutil.Field(req.ProtoReflect().Descriptor(), "database_name")
-		name := req.ProtoReflect().Get(field).String()
-		return mustMessage(t, "DatabaseExistsResponse", func(m protoreflect.Message) error {
-			return pbutil.SetBool(m, "exists", name == "demo")
+		return mustMarshal(t, &flusspb.DatabaseExistsResponse{
+			Exists: proto.Bool(req.GetDatabaseName() == "demo"),
 		}), nil
 	})
 
 	srv.on(protocol.GetTableInfo, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
-		return mustMessage(t, "GetTableInfoResponse", func(m protoreflect.Message) error {
-			if err := pbutil.SetInt64(m, "table_id", 10); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt32(m, "schema_id", 3); err != nil {
-				return err
-			}
-			if err := pbutil.SetBytes(m, "table_json", []byte(`{"name":"events"}`)); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt64(m, "created_time", 1); err != nil {
-				return err
-			}
-			return pbutil.SetInt64(m, "modified_time", 2)
+		return mustMarshal(t, &flusspb.GetTableInfoResponse{
+			TableId:      proto.Int64(10),
+			SchemaId:     proto.Int32(3),
+			TableJson:    []byte(`{"name":"events"}`),
+			CreatedTime:  proto.Int64(1),
+			ModifiedTime: proto.Int64(2),
 		}), nil
 	})
 
 	srv.on(protocol.GetTableSchema, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
-		return mustMessage(t, "GetTableSchemaResponse", func(m protoreflect.Message) error {
-			if err := pbutil.SetInt32(m, "schema_id", 3); err != nil {
-				return err
-			}
-			return pbutil.SetBytes(m, "schema_json", []byte(`{"fields":[{"name":"id"}]}`))
+		return mustMarshal(t, &flusspb.GetTableSchemaResponse{
+			SchemaId:   proto.Int32(3),
+			SchemaJson: []byte(`{"fields":[{"name":"id"}]}`),
 		}), nil
 	})
 
 	srv.on(protocol.LimitScan, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
-		req, err := iproto.NewMessage("LimitScanRequest")
-		if err != nil {
-			return nil, err
-		}
+		req := &flusspb.LimitScanRequest{}
 		if err := proto.Unmarshal(payload, req); err != nil {
 			return nil, err
 		}
-		return mustMessage(t, "LimitScanResponse", func(m protoreflect.Message) error {
-			if err := pbutil.SetBool(m, "is_log_table", true); err != nil {
-				return err
-			}
-			return pbutil.SetBytes(m, "records", []byte("batch-data"))
+		if req.GetTableId() != 10 || req.GetBucketId() != 0 || req.GetLimit() != 10 {
+			t.Fatalf("unexpected limit scan request: %#v", req)
+		}
+		return mustMarshal(t, &flusspb.LimitScanResponse{
+			IsLogTable: proto.Bool(true),
+			Records:    []byte("batch-data"),
 		}), nil
 	})
 
@@ -460,103 +356,44 @@ func TestKVScannerLifecycle(t *testing.T) {
 	srv.on(protocol.APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
-		return mustMessage(t, "ApiVersionsResponse", func(m protoreflect.Message) error {
-			addAPIVersion(t, m, protocol.APIVersions, 0)
-			addAPIVersion(t, m, protocol.GetMetadata, 0)
-			addAPIVersion(t, m, protocol.ScanKV, 0)
-			return nil
-		}), nil
+		return mustMarshal(t, apiVersionsResponse(protocol.APIVersions, protocol.GetMetadata, protocol.ScanKV)), nil
 	})
 
 	srv.on(protocol.GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
-		return mustMessage(t, "MetadataResponse", func(m protoreflect.Message) error {
-			node := serverNodeMessage(t, 1, host, int32(port))
-			if err := pbutil.SetMessage(m, "coordinator_server", node); err != nil {
-				return err
-			}
-			if err := pbutil.AppendMessage(m, "tablet_servers", node); err != nil {
-				return err
-			}
-			tableMeta, err := iproto.NewMessage("PbTableMetadata")
-			if err != nil {
-				return err
-			}
-			tm := tableMeta.ProtoReflect()
-			if err := pbutil.SetMessage(tm, "table_path", tablePathMessage(t, "demo", "kv")); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt64(tm, "table_id", 11); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt32(tm, "schema_id", 1); err != nil {
-				return err
-			}
-			if err := pbutil.SetBytes(tm, "table_json", []byte(`{}`)); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt64(tm, "created_time", 1); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt64(tm, "modified_time", 1); err != nil {
-				return err
-			}
-			bucketMeta, err := iproto.NewMessage("PbBucketMetadata")
-			if err != nil {
-				return err
-			}
-			bm := bucketMeta.ProtoReflect()
-			if err := pbutil.SetInt32(bm, "bucket_id", 0); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt32(bm, "leader_id", 1); err != nil {
-				return err
-			}
-			if err := pbutil.AppendInt32(bm, "replica_id", 1); err != nil {
-				return err
-			}
-			if err := pbutil.AppendMessage(tm, "bucket_metadata", bm); err != nil {
-				return err
-			}
-			return pbutil.AppendMessage(m, "table_metadata", tm)
-		}), nil
+		return mustMarshal(t, metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "kv"}, 11, 1)), nil
 	})
 
 	callCount := 0
 	srv.on(protocol.ScanKV, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
-		req, err := iproto.NewMessage("ScanKvRequest")
-		if err != nil {
-			return nil, err
-		}
+		req := &flusspb.ScanKvRequest{}
 		if err := proto.Unmarshal(payload, req); err != nil {
 			return nil, err
 		}
 		callCount++
-		return mustMessage(t, "ScanKvResponse", func(m protoreflect.Message) error {
-			switch callCount {
-			case 1:
-				if err := pbutil.SetBytes(m, "scanner_id", []byte("scanner-1")); err != nil {
-					return err
-				}
-				if err := pbutil.SetBool(m, "has_more_results", true); err != nil {
-					return err
-				}
-				if err := pbutil.SetBytes(m, "records", []byte("first-batch")); err != nil {
-					return err
-				}
-				return pbutil.SetInt64(m, "log_offset", 99)
-			default:
-				if err := pbutil.SetBytes(m, "scanner_id", []byte("scanner-1")); err != nil {
-					return err
-				}
-				if err := pbutil.SetBool(m, "has_more_results", false); err != nil {
-					return err
-				}
-				return pbutil.SetBytes(m, "records", []byte("second-batch"))
+		switch callCount {
+		case 1:
+			if req.GetBucketScanReq() == nil || req.GetBucketScanReq().GetTableId() != 11 {
+				t.Fatalf("unexpected initial scan request: %#v", req)
 			}
-		}), nil
+			return mustMarshal(t, &flusspb.ScanKvResponse{
+				ScannerId:      []byte("scanner-1"),
+				HasMoreResults: proto.Bool(true),
+				Records:        []byte("first-batch"),
+				LogOffset:      proto.Int64(99),
+			}), nil
+		default:
+			if string(req.GetScannerId()) != "scanner-1" {
+				t.Fatalf("expected follow-up scan to reuse scanner id, got %#v", req)
+			}
+			return mustMarshal(t, &flusspb.ScanKvResponse{
+				ScannerId:      []byte("scanner-1"),
+				HasMoreResults: proto.Bool(false),
+				Records:        []byte("second-batch"),
+			}), nil
+		}
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -606,98 +443,32 @@ func TestAppendWriterLifecycleAndDefaults(t *testing.T) {
 	srv.on(protocol.APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
-		return mustMessage(t, "ApiVersionsResponse", func(m protoreflect.Message) error {
-			addAPIVersion(t, m, protocol.APIVersions, 0)
-			addAPIVersion(t, m, protocol.GetMetadata, 0)
-			addAPIVersion(t, m, protocol.ProduceLog, 0)
-			return nil
-		}), nil
+		return mustMarshal(t, apiVersionsResponse(protocol.APIVersions, protocol.GetMetadata, protocol.ProduceLog)), nil
 	})
 
 	srv.on(protocol.GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
-		return mustMessage(t, "MetadataResponse", func(m protoreflect.Message) error {
-			node := serverNodeMessage(t, 1, host, int32(port))
-			if err := pbutil.SetMessage(m, "coordinator_server", node); err != nil {
-				return err
-			}
-			if err := pbutil.AppendMessage(m, "tablet_servers", node); err != nil {
-				return err
-			}
-			tableMeta, err := iproto.NewMessage("PbTableMetadata")
-			if err != nil {
-				return err
-			}
-			tm := tableMeta.ProtoReflect()
-			if err := pbutil.SetMessage(tm, "table_path", tablePathMessage(t, "demo", "logs")); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt64(tm, "table_id", 21); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt32(tm, "schema_id", 2); err != nil {
-				return err
-			}
-			if err := pbutil.SetBytes(tm, "table_json", []byte(`{}`)); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt64(tm, "created_time", 1); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt64(tm, "modified_time", 1); err != nil {
-				return err
-			}
-			bucketMeta, err := iproto.NewMessage("PbBucketMetadata")
-			if err != nil {
-				return err
-			}
-			bm := bucketMeta.ProtoReflect()
-			if err := pbutil.SetInt32(bm, "bucket_id", 0); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt32(bm, "leader_id", 1); err != nil {
-				return err
-			}
-			if err := pbutil.AppendInt32(bm, "replica_id", 1); err != nil {
-				return err
-			}
-			if err := pbutil.AppendMessage(tm, "bucket_metadata", bm); err != nil {
-				return err
-			}
-			return pbutil.AppendMessage(m, "table_metadata", tm)
-		}), nil
+		return mustMarshal(t, metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "logs"}, 21, 2)), nil
 	})
 
 	srv.on(protocol.ProduceLog, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
-		req, err := iproto.NewMessage("ProduceLogRequest")
-		if err != nil {
-			return nil, err
-		}
+		req := &flusspb.ProduceLogRequest{}
 		if err := proto.Unmarshal(payload, req); err != nil {
 			return nil, err
 		}
-		msg := req.ProtoReflect()
-		if acks := msg.Get(msg.Descriptor().Fields().ByName("acks")).Int(); acks != -1 {
-			t.Fatalf("expected default acks -1, got %d", acks)
+		if req.GetAcks() != -1 {
+			t.Fatalf("expected default acks -1, got %d", req.GetAcks())
 		}
-		if timeout := msg.Get(msg.Descriptor().Fields().ByName("timeout_ms")).Int(); timeout != 15000 {
-			t.Fatalf("expected default timeout 15000, got %d", timeout)
+		if req.GetTimeoutMs() != 15000 {
+			t.Fatalf("expected default timeout 15000, got %d", req.GetTimeoutMs())
 		}
-		return mustMessage(t, "ProduceLogResponse", func(m protoreflect.Message) error {
-			item, err := iproto.NewMessage("PbProduceLogRespForBucket")
-			if err != nil {
-				return err
-			}
-			im := item.ProtoReflect()
-			if err := pbutil.SetInt32(im, "bucket_id", 0); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt64(im, "base_offset", 42); err != nil {
-				return err
-			}
-			return pbutil.AppendMessage(m, "buckets_resp", im)
+		return mustMarshal(t, &flusspb.ProduceLogResponse{
+			BucketsResp: []*flusspb.PbProduceLogRespForBucket{{
+				BucketId:   proto.Int32(0),
+				BaseOffset: proto.Int64(42),
+			}},
 		}), nil
 	})
 
@@ -746,106 +517,40 @@ func TestUpsertWriterLifecycleAndOptions(t *testing.T) {
 	srv.on(protocol.APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
-		return mustMessage(t, "ApiVersionsResponse", func(m protoreflect.Message) error {
-			addAPIVersion(t, m, protocol.APIVersions, 0)
-			addAPIVersion(t, m, protocol.GetMetadata, 0)
-			addAPIVersion(t, m, protocol.PutKV, 0)
-			return nil
-		}), nil
+		return mustMarshal(t, apiVersionsResponse(protocol.APIVersions, protocol.GetMetadata, protocol.PutKV)), nil
 	})
 
 	srv.on(protocol.GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
-		return mustMessage(t, "MetadataResponse", func(m protoreflect.Message) error {
-			node := serverNodeMessage(t, 1, host, int32(port))
-			if err := pbutil.SetMessage(m, "coordinator_server", node); err != nil {
-				return err
-			}
-			if err := pbutil.AppendMessage(m, "tablet_servers", node); err != nil {
-				return err
-			}
-			tableMeta, err := iproto.NewMessage("PbTableMetadata")
-			if err != nil {
-				return err
-			}
-			tm := tableMeta.ProtoReflect()
-			if err := pbutil.SetMessage(tm, "table_path", tablePathMessage(t, "demo", "kv")); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt64(tm, "table_id", 31); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt32(tm, "schema_id", 5); err != nil {
-				return err
-			}
-			if err := pbutil.SetBytes(tm, "table_json", []byte(`{}`)); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt64(tm, "created_time", 1); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt64(tm, "modified_time", 1); err != nil {
-				return err
-			}
-			bucketMeta, err := iproto.NewMessage("PbBucketMetadata")
-			if err != nil {
-				return err
-			}
-			bm := bucketMeta.ProtoReflect()
-			if err := pbutil.SetInt32(bm, "bucket_id", 0); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt32(bm, "leader_id", 1); err != nil {
-				return err
-			}
-			if err := pbutil.AppendInt32(bm, "replica_id", 1); err != nil {
-				return err
-			}
-			if err := pbutil.AppendMessage(tm, "bucket_metadata", bm); err != nil {
-				return err
-			}
-			return pbutil.AppendMessage(m, "table_metadata", tm)
-		}), nil
+		return mustMarshal(t, metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "kv"}, 31, 5)), nil
 	})
 
 	aggMode := int32(2)
 	srv.on(protocol.PutKV, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
-		req, err := iproto.NewMessage("PutKvRequest")
-		if err != nil {
-			return nil, err
-		}
+		req := &flusspb.PutKvRequest{}
 		if err := proto.Unmarshal(payload, req); err != nil {
 			return nil, err
 		}
-		msg := req.ProtoReflect()
-		if acks := msg.Get(msg.Descriptor().Fields().ByName("acks")).Int(); acks != 1 {
-			t.Fatalf("expected configured acks 1, got %d", acks)
+		if req.GetAcks() != 1 {
+			t.Fatalf("expected configured acks 1, got %d", req.GetAcks())
 		}
-		if timeout := msg.Get(msg.Descriptor().Fields().ByName("timeout_ms")).Int(); timeout != 9000 {
-			t.Fatalf("expected configured timeout 9000, got %d", timeout)
+		if req.GetTimeoutMs() != 9000 {
+			t.Fatalf("expected configured timeout 9000, got %d", req.GetTimeoutMs())
 		}
-		targetColumns := msg.Get(msg.Descriptor().Fields().ByName("target_columns")).List()
-		if targetColumns.Len() != 2 || targetColumns.Get(0).Int() != 1 || targetColumns.Get(1).Int() != 3 {
+		targetColumns := req.GetTargetColumns()
+		if len(targetColumns) != 2 || targetColumns[0] != 1 || targetColumns[1] != 3 {
 			t.Fatalf("unexpected target_columns: %#v", targetColumns)
 		}
-		if gotAgg := msg.Get(msg.Descriptor().Fields().ByName("agg_mode")).Int(); gotAgg != int64(aggMode) {
-			t.Fatalf("expected agg_mode %d, got %d", aggMode, gotAgg)
+		if req.GetAggMode() != aggMode {
+			t.Fatalf("expected agg_mode %d, got %d", aggMode, req.GetAggMode())
 		}
-		return mustMessage(t, "PutKvResponse", func(m protoreflect.Message) error {
-			item, err := iproto.NewMessage("PbPutKvRespForBucket")
-			if err != nil {
-				return err
-			}
-			im := item.ProtoReflect()
-			if err := pbutil.SetInt32(im, "bucket_id", 0); err != nil {
-				return err
-			}
-			if err := pbutil.SetInt64(im, "log_end_offset", 77); err != nil {
-				return err
-			}
-			return pbutil.AppendMessage(m, "buckets_resp", im)
+		return mustMarshal(t, &flusspb.PutKvResponse{
+			BucketsResp: []*flusspb.PbPutKvRespForBucket{{
+				BucketId:     proto.Int32(0),
+				LogEndOffset: proto.Int64(77),
+			}},
 		}), nil
 	})
 
