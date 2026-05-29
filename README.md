@@ -43,6 +43,12 @@ Still in progress:
 go get github.com/chiqors/fluss-client-go
 ```
 
+Common install patterns:
+
+- stable latest tag: `go get github.com/chiqors/fluss-client-go@latest`
+- pinned release: `go get github.com/chiqors/fluss-client-go@v0.1.0`
+- moving main branch: `go get github.com/chiqors/fluss-client-go@main`
+
 ## Quick Start
 
 Create a root client with one or more Fluss bootstrap endpoints:
