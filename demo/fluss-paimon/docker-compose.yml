@@ -117,7 +117,6 @@ services:
     build:
       context: .
       dockerfile: paimon.Dockerfile
-    container_name: fluss-paimon-jobmanager
     command: jobmanager
     ports:
       - "8083:8081"
@@ -142,7 +141,6 @@ services:
     build:
       context: .
       dockerfile: paimon.Dockerfile
-    container_name: fluss-paimon-taskmanager
     command: taskmanager
     ports:
       - "9250:9249"
@@ -162,7 +160,6 @@ services:
     build:
       context: .
       dockerfile: tiering-job.Dockerfile
-    container_name: fluss-paimon-tiering-job
     depends_on:
       jobmanager:
         condition: service_healthy
