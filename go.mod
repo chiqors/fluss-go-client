@@ -1,4 +1,4 @@
-module github.com/fluss-client-go
+module github.com/chiqors/fluss-client-go
 
 go 1.25.0
 

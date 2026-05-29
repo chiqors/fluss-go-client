@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/fluss-client-go/protocol"
+	"github.com/chiqors/fluss-client-go/protocol"
 )
 
 func TestEncodeRequest(t *testing.T) {

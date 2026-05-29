@@ -1,0 +1,259 @@
+services:
+  rustfs:
+    image: rustfs/rustfs:1.0.0-beta.5
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - RUSTFS_ADDRESS=0.0.0.0:9000
+      - RUSTFS_ACCESS_KEY=flussadmin
+      - RUSTFS_CONSOLE_ADDRESS=0.0.0.0:9001
+      - RUSTFS_SECRET_KEY=flussadmin
+      - RUSTFS_CONSOLE_ENABLE=true
+    volumes:
+      - rustfs-data:/data
+    command: /data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  rustfs-init:
+    image: minio/mc
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set rustfs http://rustfs:9000 flussadmin flussadmin; do
+        echo 'Waiting for RustFS...';
+        sleep 1;
+      done;
+      mc mb --ignore-existing rustfs/fluss;
+      "
+
+  zookeeper:
+    image: zookeeper:3.9.5
+    restart: unless-stopped
+
+  coordinator-server:
+    build:
+      context: .
+      dockerfile: fluss.Dockerfile
+    command: coordinatorServer
+    depends_on:
+      zookeeper:
+        condition: service_started
+      rustfs-init:
+        condition: service_completed_successfully
+    ports:
+      - "9123:9123"
+    environment:
+      - |
+        FLUSS_PROPERTIES=
+        zookeeper.address: zookeeper:2181
+        bind.listeners: FLUSS://coordinator-server:9123
+        remote.data.dir: s3://fluss/remote-data
+        s3.endpoint: http://rustfs:9000
+        s3.access-key: flussadmin
+        s3.secret-key: flussadmin
+        s3.region: us-east-1
+        s3.path-style-access: true
+        s3.assumed.role.arn: arn:aws:iam::000000000000:role/flussadmin
+        s3.assumed.role.sts.endpoint: http://rustfs:9000
+        datalake.format: paimon
+        datalake.paimon.metastore: filesystem
+        datalake.paimon.warehouse: s3://fluss/paimon
+        datalake.paimon.s3.endpoint: http://rustfs:9000
+        datalake.paimon.s3.access-key: flussadmin
+        datalake.paimon.s3.secret-key: flussadmin
+        datalake.paimon.s3.path.style.access: true
+    healthcheck:
+      test: ["CMD-SHELL", "bash -lc 'exec 3<>/dev/tcp/coordinator-server/9123'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  tablet-server:
+    build:
+      context: .
+      dockerfile: fluss.Dockerfile
+    command: tabletServer
+    depends_on:
+      coordinator-server:
+        condition: service_healthy
+    environment:
+      - |
+        FLUSS_PROPERTIES=
+        zookeeper.address: zookeeper:2181
+        bind.listeners: FLUSS://tablet-server:9123
+        data.dir: /tmp/fluss/data
+        remote.data.dir: s3://fluss/remote-data
+        s3.endpoint: http://rustfs:9000
+        s3.access-key: flussadmin
+        s3.secret-key: flussadmin
+        s3.region: us-east-1
+        s3.path-style-access: true
+        s3.assumed.role.arn: arn:aws:iam::000000000000:role/flussadmin
+        s3.assumed.role.sts.endpoint: http://rustfs:9000
+        datalake.format: paimon
+        datalake.paimon.metastore: filesystem
+        datalake.paimon.warehouse: s3://fluss/paimon
+        datalake.paimon.s3.endpoint: http://rustfs:9000
+        datalake.paimon.s3.access-key: flussadmin
+        datalake.paimon.s3.secret-key: flussadmin
+        datalake.paimon.s3.path.style.access: true
+    healthcheck:
+      test: ["CMD-SHELL", "bash -lc 'exec 3<>/dev/tcp/tablet-server/9123'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  jobmanager:
+    build:
+      context: .
+      dockerfile: paimon.Dockerfile
+    container_name: fluss-paimon-jobmanager
+    command: jobmanager
+    ports:
+      - "8083:8081"
+      - "9249:9249"
+    depends_on:
+      rustfs-init:
+        condition: service_completed_successfully
+      coordinator-server:
+        condition: service_healthy
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        rest.address: jobmanager
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  taskmanager:
+    build:
+      context: .
+      dockerfile: paimon.Dockerfile
+    container_name: fluss-paimon-taskmanager
+    command: taskmanager
+    ports:
+      - "9250:9249"
+    depends_on:
+      jobmanager:
+        condition: service_healthy
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        rest.address: jobmanager
+        taskmanager.numberOfTaskSlots: 10
+        taskmanager.memory.process.size: 2048m
+        taskmanager.memory.task.off-heap.size: 128m
+
+  fluss-tiering-job:
+    build:
+      context: .
+      dockerfile: tiering-job.Dockerfile
+    container_name: fluss-paimon-tiering-job
+    depends_on:
+      jobmanager:
+        condition: service_healthy
+      taskmanager:
+        condition: service_started
+      coordinator-server:
+        condition: service_healthy
+      rustfs-init:
+        condition: service_completed_successfully
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        rest.address: jobmanager
+    entrypoint:
+      - /usr/bin/bash
+      - -c
+    command:
+      - |
+        set -euo pipefail
+        until curl -fsS http://jobmanager:8081/ >/dev/null; do
+          echo "Waiting for Flink JobManager..."
+          sleep 2
+        done
+        until getent hosts coordinator-server >/dev/null && bash -lc 'exec 3<>/dev/tcp/coordinator-server/9123'; do
+          echo "Waiting for Fluss coordinator..."
+          sleep 2
+        done
+        if /opt/flink/bin/flink list -m jobmanager:8081 | grep -q "Fluss Lake Tiering Service - paimon"; then
+          echo "Fluss tiering job is already running; skipping submission."
+          exit 0
+        fi
+        /opt/flink/bin/flink run -d \
+          -m jobmanager:8081 \
+          /opt/flink/opt/fluss-flink-tiering-0.9.1-incubating.jar \
+          --fluss.bootstrap.servers coordinator-server:9123 \
+          --datalake.format paimon \
+          --datalake.paimon.metastore filesystem \
+          --datalake.paimon.warehouse s3://fluss/paimon \
+          --datalake.paimon.s3.endpoint http://rustfs:9000 \
+          --datalake.paimon.s3.access.key flussadmin \
+          --datalake.paimon.s3.secret.key flussadmin \
+          --datalake.paimon.s3.path.style.access true
+    restart: "no"
+
+  sql-bootstrap:
+    build:
+      context: .
+      dockerfile: paimon.Dockerfile
+    depends_on:
+      jobmanager:
+        condition: service_healthy
+      taskmanager:
+        condition: service_started
+      coordinator-server:
+        condition: service_healthy
+      tablet-server:
+        condition: service_healthy
+      fluss-tiering-job:
+        condition: service_completed_successfully
+    volumes:
+      - ./sql:/work/sql:ro
+    entrypoint:
+      - /usr/bin/bash
+      - -lc
+    command:
+      - |
+        set -euo pipefail
+        until curl -fsS http://jobmanager:8081/ >/dev/null; do
+          echo "Waiting for Flink JobManager..."
+          sleep 2
+        done
+        /opt/flink/bin/sql-client.sh embedded -f /work/sql/bootstrap.sql
+    restart: "no"
+
+  go-e2e:
+    build:
+      context: ../..
+      dockerfile: demo/fluss-paimon/go-e2e.Dockerfile
+    depends_on:
+      coordinator-server:
+        condition: service_healthy
+      tablet-server:
+        condition: service_healthy
+      sql-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      FLUSS_BOOTSTRAP: coordinator-server:9123
+      FLUSS_DATABASE: fluss
+      FLUSS_TABLE: e2e_orders
+    restart: "no"
+
+volumes:
+  rustfs-data:

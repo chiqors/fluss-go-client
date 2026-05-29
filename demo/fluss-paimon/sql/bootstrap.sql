@@ -1,0 +1,24 @@
+CREATE CATALOG fluss_catalog WITH (
+  'type' = 'fluss',
+  'bootstrap.servers' = 'coordinator-server:9123',
+  'paimon.s3.access-key' = 'flussadmin',
+  'paimon.s3.secret-key' = 'flussadmin'
+);
+
+USE CATALOG fluss_catalog;
+
+CREATE DATABASE IF NOT EXISTS fluss;
+USE fluss;
+
+DROP TABLE IF EXISTS e2e_orders;
+
+CREATE TABLE e2e_orders (
+  order_id BIGINT,
+  customer_id INT,
+  amount DECIMAL(15, 2),
+  status STRING
+) WITH (
+  'bucket.num' = '1',
+  'table.datalake.enabled' = 'true',
+  'table.datalake.freshness' = '30s'
+);

@@ -3,9 +3,9 @@ package client
 import (
 	"context"
 
-	"github.com/fluss-client-go/internal/pbutil"
-	iproto "github.com/fluss-client-go/internal/proto"
-	"github.com/fluss-client-go/protocol"
+	"github.com/chiqors/fluss-client-go/internal/pbutil"
+	iproto "github.com/chiqors/fluss-client-go/internal/proto"
+	"github.com/chiqors/fluss-client-go/protocol"
 	"google.golang.org/protobuf/types/dynamicpb"
 )
 

@@ -1,6 +1,6 @@
 package client
 
-import "github.com/fluss-client-go/metadata"
+import "github.com/chiqors/fluss-client-go/metadata"
 
 type TablePath = metadata.TablePath
 

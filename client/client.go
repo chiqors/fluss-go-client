@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/fluss-client-go/metadata"
-	"github.com/fluss-client-go/protocol"
-	"github.com/fluss-client-go/rpc"
+	"github.com/chiqors/fluss-client-go/metadata"
+	"github.com/chiqors/fluss-client-go/protocol"
+	"github.com/chiqors/fluss-client-go/rpc"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
 )
