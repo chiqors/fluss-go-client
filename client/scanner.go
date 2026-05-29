@@ -26,7 +26,7 @@ func (s *KVScanner) Next(ctx context.Context) (ScanKVResult, error) {
 	if err != nil {
 		return ScanKVResult{}, err
 	}
-	node, err := s.table.client.routeFor(info.ID, s.partitionID, s.bucketID)
+	node, err := s.table.routeFor(ctx, info.ID, s.partitionID, s.bucketID)
 	if err != nil {
 		return ScanKVResult{}, err
 	}
@@ -91,7 +91,7 @@ func (s *KVScanner) Close(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	node, err := s.table.client.routeFor(info.ID, s.partitionID, s.bucketID)
+	node, err := s.table.routeFor(ctx, info.ID, s.partitionID, s.bucketID)
 	if err != nil {
 		return err
 	}

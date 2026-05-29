@@ -139,7 +139,7 @@ func parseBucketMetadata(tableID int64, partitionID *int64, msg *flusspb.PbBucke
 	if msg.LeaderEpoch != nil {
 		route.LeaderEpoch = msg.GetLeaderEpoch()
 	}
-	if route.LeaderID == 0 {
+	if msg.LeaderId == nil {
 		return metadata.BucketRoute{}, fmt.Errorf("leader missing for table=%d bucket=%d", tableID, route.BucketID)
 	}
 	return route, nil

@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
+	"github.com/chiqors/fluss-go-client/metadata"
 	"github.com/chiqors/fluss-go-client/protocol"
 	"google.golang.org/protobuf/proto"
 )
@@ -203,7 +204,7 @@ func (t *TableClient) LimitScan(ctx context.Context, partitionID *int64, bucketI
 	if err != nil {
 		return LimitScanResult{}, err
 	}
-	node, err := t.client.routeFor(tableInfo.ID, partitionID, bucketID)
+	node, err := t.routeFor(ctx, tableInfo.ID, partitionID, bucketID)
 	if err != nil {
 		return LimitScanResult{}, err
 	}
@@ -246,18 +247,23 @@ func (t *TableClient) NewKVScanner(partitionID *int64, bucketID int32, limit *in
 	}
 }
 
+func (t *TableClient) routeFor(ctx context.Context, tableID int64, partitionID *int64, bucketID int32) (metadata.ServerNode, error) {
+	node, err := t.client.routeFor(tableID, partitionID, bucketID)
+	if err == nil {
+		return node, nil
+	}
+	if refreshErr := t.client.RefreshMetadata(ctx, []TablePath{t.path}, nil); refreshErr != nil {
+		return metadata.ServerNode{}, err
+	}
+	return t.client.routeFor(tableID, partitionID, bucketID)
+}
+
 func (t *TableClient) groupBatchesByLeader(ctx context.Context, tableID int64, buckets []BucketRecordBatch) (map[string][]BucketRecordBatch, error) {
 	grouped := map[string][]BucketRecordBatch{}
 	for _, batch := range buckets {
-		node, err := t.client.routeFor(tableID, batch.PartitionID, batch.BucketID)
+		node, err := t.routeFor(ctx, tableID, batch.PartitionID, batch.BucketID)
 		if err != nil {
-			if refreshErr := t.client.RefreshMetadata(ctx, []TablePath{t.path}, nil); refreshErr != nil {
-				return nil, err
-			}
-			node, err = t.client.routeFor(tableID, batch.PartitionID, batch.BucketID)
-			if err != nil {
-				return nil, err
-			}
+			return nil, err
 		}
 		grouped[node.Address()] = append(grouped[node.Address()], batch)
 	}
@@ -267,7 +273,7 @@ func (t *TableClient) groupBatchesByLeader(ctx context.Context, tableID int64, b
 func (t *TableClient) groupLookupsByLeader(ctx context.Context, tableID int64, reqs []LookupBucketRequest) (map[string][]LookupBucketRequest, error) {
 	grouped := map[string][]LookupBucketRequest{}
 	for _, req := range reqs {
-		node, err := t.client.routeFor(tableID, req.PartitionID, req.BucketID)
+		node, err := t.routeFor(ctx, tableID, req.PartitionID, req.BucketID)
 		if err != nil {
 			return nil, err
 		}
@@ -279,7 +285,7 @@ func (t *TableClient) groupLookupsByLeader(ctx context.Context, tableID int64, r
 func (t *TableClient) groupFetchesByLeader(ctx context.Context, tableID int64, reqs []FetchBucketRequest) (map[string][]FetchBucketRequest, error) {
 	grouped := map[string][]FetchBucketRequest{}
 	for _, req := range reqs {
-		node, err := t.client.routeFor(tableID, req.PartitionID, req.BucketID)
+		node, err := t.routeFor(ctx, tableID, req.PartitionID, req.BucketID)
 		if err != nil {
 			return nil, err
 		}
