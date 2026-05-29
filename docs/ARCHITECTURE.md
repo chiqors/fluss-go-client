@@ -1,6 +1,6 @@
 # Architecture Overview
 
-This document explains the current architecture of `github.com/chiqors/fluss-client-go`.
+This document explains the current architecture of `github.com/chiqors/fluss-go-client`.
 
 It is intentionally short and should evolve with the implementation.
 
@@ -48,7 +48,7 @@ The SDK is designed to:
   - pluggable auth interfaces
 
 - [internal/proto](/Users/administrator/Documents/Labs/fluss-client/internal/proto)
-  - embedded Fluss proto descriptors
+  - embedded Fluss proto descriptors used by the current dynamic-proto implementation
 
 - [internal/pbutil](/Users/administrator/Documents/Labs/fluss-client/internal/pbutil)
   - protobuf helper utilities
@@ -78,8 +78,19 @@ The repo is intentionally early in a few areas:
 - higher-level writer and scanner abstractions are not complete yet
 - Arrow integration is planned but not implemented
 - secured-cluster support is still mostly an extension-point design, not a full implementation
+- the protocol layer still relies on dynamic proto handling rather than generated Go protobuf code
 
 These tradeoffs are deliberate. The current priority is correctness of protocol behavior and a stable foundation before expanding the high-level API surface.
+
+## Protocol Model Direction
+
+The intended long-term shape is:
+
+- public SDK surface: Go-native types and methods
+- internal wire/protocol layer: generated protobuf Go code
+- dynamic proto loading: temporary bootstrap strategy during early client bring-up
+
+That means application code should continue to work with `client`, `AdminClient`, `TableClient`, option structs, and result types rather than raw protobuf-generated request/response structs.
 
 ## Direction Of Travel
 
@@ -90,5 +101,6 @@ The next major steps are:
 3. high-level lookup and scanner APIs
 4. Arrow and row-model support
 5. security and observability hardening
+6. migrate protocol internals from dynamic proto handling to generated protobuf Go code
 
 See [GRAND_PLAN.md](/Users/administrator/Documents/Labs/fluss-client/GRAND_PLAN.md) for the detailed roadmap and current checklist state.

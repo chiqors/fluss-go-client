@@ -1,8 +1,8 @@
 package client
 
 import (
-	"github.com/chiqors/fluss-client-go/internal/pbutil"
-	"github.com/chiqors/fluss-client-go/protocol"
+	"github.com/chiqors/fluss-go-client/internal/pbutil"
+	"github.com/chiqors/fluss-go-client/protocol"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 

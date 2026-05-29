@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to `github.com/chiqors/fluss-client-go`.
+Thanks for contributing to `github.com/chiqors/fluss-go-client`.
 
 This project is building toward a production-ready pure Go Fluss client SDK. The repo already has a working foundation, but many higher-level APIs and production hardening tasks are still in progress. Please keep contributions incremental, tested, and aligned with the project plan.
 

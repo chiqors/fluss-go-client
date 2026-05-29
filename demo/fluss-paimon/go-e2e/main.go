@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/chiqors/fluss-client-go/client"
+	"github.com/chiqors/fluss-go-client/client"
 )
 
 func main() {

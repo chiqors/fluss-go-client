@@ -1,4 +1,4 @@
-# fluss-client-go
+# fluss-go-client
 
 Pure Go Fluss client SDK for Fluss `0.9.x`.
 
@@ -40,14 +40,14 @@ Still in progress:
 ## Install
 
 ```bash
-go get github.com/chiqors/fluss-client-go
+go get github.com/chiqors/fluss-go-client
 ```
 
 Common install patterns:
 
-- stable latest tag: `go get github.com/chiqors/fluss-client-go@latest`
-- pinned release: `go get github.com/chiqors/fluss-client-go@v0.1.0`
-- moving main branch: `go get github.com/chiqors/fluss-client-go@main`
+- stable latest tag: `go get github.com/chiqors/fluss-go-client@latest`
+- pinned release: `go get github.com/chiqors/fluss-go-client@v0.1.0`
+- moving main branch: `go get github.com/chiqors/fluss-go-client@main`
 
 ## Quick Start
 
@@ -60,7 +60,7 @@ import (
 	"context"
 	"log"
 
-	"github.com/chiqors/fluss-client-go/client"
+	"github.com/chiqors/fluss-go-client/client"
 )
 
 func main() {
@@ -181,7 +181,7 @@ Project docs:
 ## Compatibility
 
 - Target Fluss compatibility: `0.9.x`
-- Module path: `github.com/chiqors/fluss-client-go`
+- Module path: `github.com/chiqors/fluss-go-client`
 
 Compatibility beyond `0.9.x` is not promised yet.
 

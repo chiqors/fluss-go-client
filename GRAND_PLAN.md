@@ -1,6 +1,6 @@
 # Fluss Go Client Grand Plan
 
-This file is the long-lived implementation plan for `github.com/chiqors/fluss-client-go`.
+This file is the long-lived implementation plan for `github.com/chiqors/fluss-go-client`.
 
 Its purpose is to keep one shared memory of:
 
@@ -67,7 +67,7 @@ Success means a Go team can:
 - [x] Go module and package layout foundation
 - [x] Native TCP RPC framing
 - [x] Request multiplexing and correlation handling
-- [x] Runtime proto descriptor loading from embedded `internal/proto/fluss.proto`
+- [~] Runtime proto descriptor loading from embedded `internal/proto/fluss.proto`
 - [x] API version negotiation
 - [x] Basic pluggable auth interface
 - [x] Metadata cache and leader routing foundation
@@ -159,6 +159,15 @@ Exit criteria:
 ## Phase 1: Protocol and Transport Hardening
 
 Goal: make the wire layer stable and debuggable.
+
+### Internal protocol model direction
+
+- [x] Public SDK surface should remain Go-native
+- [x] Internal wire/protocol layer should target generated protobuf Go code
+- [~] Dynamic proto loading remains a temporary bootstrap foundation until generated protobuf migration lands
+- [ ] Introduce protobuf code generation workflow
+- [ ] Migrate request builders from dynamic messages to generated protobuf structs
+- [ ] Keep generated protobuf code internal and avoid exposing it as the main SDK surface
 
 ### Core
 
@@ -267,10 +276,10 @@ Goal: move from raw RPC operations to usable production writers.
 
 ### Writer APIs
 
-- [ ] `AppendWriter`
-- [ ] `UpsertWriter`
+- [~] `AppendWriter`
+- [~] `UpsertWriter`
 - [ ] explicit `Flush()` semantics
-- [ ] explicit `Close()` semantics
+- [~] explicit `Close()` semantics
 - [ ] backpressure behavior
 - [ ] batch size controls
 - [ ] linger/flush interval controls
@@ -543,11 +552,13 @@ Use this section as the short memory of real repo progress.
 - [x] Added unit and mock integration tests
 - [x] Built `demo/fluss-paimon` as a minimal real-container E2E smoke test
 - [x] Removed unstable scan assertion from the demo smoke path
-- [x] Aligned module path to `github.com/chiqors/fluss-client-go`
+- [x] Aligned module path to `github.com/chiqors/fluss-go-client`
 - [x] Updated demo README to reflect the current direct-Go validation setup
 - [x] Added Phase 0 repo guardrails: CI workflow, contributing guide, and architecture overview
 - [x] Added GitHub issue and PR templates and expanded root usage documentation
 - [x] Recorded public versioning policy with `v0.1.0` as the first release target
+- [x] Added first lightweight writer abstractions for append and upsert flows
+- [x] Recorded architecture direction: Go-native public API with generated protobuf internals as the target
 
 ## Decision Log
 
@@ -559,6 +570,9 @@ Use this section as the short memory of real repo progress.
 - [x] Raw byte operations are acceptable as an early foundation
 - [x] Arrow should be a first-class data path before adding rich typed mappers
 - [x] Public tagged Go module versioning should begin at `v0.1.0`
+- [x] Public SDK APIs should stay Go-native rather than exposing raw protobuf request/response types
+- [x] Internal protocol handling should move toward generated protobuf Go code
+- [x] Dynamic proto loading is a temporary implementation strategy, not the desired final architecture
 
 ### Decisions still to make
 

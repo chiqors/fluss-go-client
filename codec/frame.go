@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/chiqors/fluss-client-go/protocol"
+	"github.com/chiqors/fluss-go-client/protocol"
 )
 
 const (

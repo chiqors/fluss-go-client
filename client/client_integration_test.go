@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chiqors/fluss-client-go/internal/pbutil"
-	iproto "github.com/chiqors/fluss-client-go/internal/proto"
-	"github.com/chiqors/fluss-client-go/protocol"
+	"github.com/chiqors/fluss-go-client/internal/pbutil"
+	iproto "github.com/chiqors/fluss-go-client/internal/proto"
+	"github.com/chiqors/fluss-go-client/protocol"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
@@ -587,5 +587,298 @@ func TestKVScannerLifecycle(t *testing.T) {
 
 	if err := scanner.Close(ctx); err != nil {
 		t.Fatalf("scanner.Close() error = %v", err)
+	}
+}
+
+func TestAppendWriterLifecycleAndDefaults(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	srv.on(protocol.APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMessage(t, "ApiVersionsResponse", func(m protoreflect.Message) error {
+			addAPIVersion(t, m, protocol.APIVersions, 0)
+			addAPIVersion(t, m, protocol.GetMetadata, 0)
+			addAPIVersion(t, m, protocol.ProduceLog, 0)
+			return nil
+		}), nil
+	})
+
+	srv.on(protocol.GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMessage(t, "MetadataResponse", func(m protoreflect.Message) error {
+			node := serverNodeMessage(t, 1, host, int32(port))
+			if err := pbutil.SetMessage(m, "coordinator_server", node); err != nil {
+				return err
+			}
+			if err := pbutil.AppendMessage(m, "tablet_servers", node); err != nil {
+				return err
+			}
+			tableMeta, err := iproto.NewMessage("PbTableMetadata")
+			if err != nil {
+				return err
+			}
+			tm := tableMeta.ProtoReflect()
+			if err := pbutil.SetMessage(tm, "table_path", tablePathMessage(t, "demo", "logs")); err != nil {
+				return err
+			}
+			if err := pbutil.SetInt64(tm, "table_id", 21); err != nil {
+				return err
+			}
+			if err := pbutil.SetInt32(tm, "schema_id", 2); err != nil {
+				return err
+			}
+			if err := pbutil.SetBytes(tm, "table_json", []byte(`{}`)); err != nil {
+				return err
+			}
+			if err := pbutil.SetInt64(tm, "created_time", 1); err != nil {
+				return err
+			}
+			if err := pbutil.SetInt64(tm, "modified_time", 1); err != nil {
+				return err
+			}
+			bucketMeta, err := iproto.NewMessage("PbBucketMetadata")
+			if err != nil {
+				return err
+			}
+			bm := bucketMeta.ProtoReflect()
+			if err := pbutil.SetInt32(bm, "bucket_id", 0); err != nil {
+				return err
+			}
+			if err := pbutil.SetInt32(bm, "leader_id", 1); err != nil {
+				return err
+			}
+			if err := pbutil.AppendInt32(bm, "replica_id", 1); err != nil {
+				return err
+			}
+			if err := pbutil.AppendMessage(tm, "bucket_metadata", bm); err != nil {
+				return err
+			}
+			return pbutil.AppendMessage(m, "table_metadata", tm)
+		}), nil
+	})
+
+	srv.on(protocol.ProduceLog, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req, err := iproto.NewMessage("ProduceLogRequest")
+		if err != nil {
+			return nil, err
+		}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		msg := req.ProtoReflect()
+		if acks := msg.Get(msg.Descriptor().Fields().ByName("acks")).Int(); acks != -1 {
+			t.Fatalf("expected default acks -1, got %d", acks)
+		}
+		if timeout := msg.Get(msg.Descriptor().Fields().ByName("timeout_ms")).Int(); timeout != 15000 {
+			t.Fatalf("expected default timeout 15000, got %d", timeout)
+		}
+		return mustMessage(t, "ProduceLogResponse", func(m protoreflect.Message) error {
+			item, err := iproto.NewMessage("PbProduceLogRespForBucket")
+			if err != nil {
+				return err
+			}
+			im := item.ProtoReflect()
+			if err := pbutil.SetInt32(im, "bucket_id", 0); err != nil {
+				return err
+			}
+			if err := pbutil.SetInt64(im, "base_offset", 42); err != nil {
+				return err
+			}
+			return pbutil.AppendMessage(m, "buckets_resp", im)
+		}), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	writer := cli.Table(TablePath{DatabaseName: "demo", TableName: "logs"}).NewAppendWriter(AppendOptions{})
+	results, err := writer.Write(ctx, []BucketRecordBatch{{
+		BucketID: 0,
+		Records:  []byte("log-batch"),
+	}})
+	if err != nil {
+		t.Fatalf("writer.Write() error = %v", err)
+	}
+	if len(results) != 1 || results[0].BaseOffset != 42 {
+		t.Fatalf("unexpected produce results: %#v", results)
+	}
+
+	if err := writer.Close(); err != nil {
+		t.Fatalf("writer.Close() error = %v", err)
+	}
+	if _, err := writer.Write(ctx, []BucketRecordBatch{{BucketID: 0, Records: []byte("x")}}); err == nil || err != ErrClosed {
+		t.Fatalf("expected ErrClosed after Close, got %v", err)
+	}
+}
+
+func TestUpsertWriterLifecycleAndOptions(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	srv.on(protocol.APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMessage(t, "ApiVersionsResponse", func(m protoreflect.Message) error {
+			addAPIVersion(t, m, protocol.APIVersions, 0)
+			addAPIVersion(t, m, protocol.GetMetadata, 0)
+			addAPIVersion(t, m, protocol.PutKV, 0)
+			return nil
+		}), nil
+	})
+
+	srv.on(protocol.GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMessage(t, "MetadataResponse", func(m protoreflect.Message) error {
+			node := serverNodeMessage(t, 1, host, int32(port))
+			if err := pbutil.SetMessage(m, "coordinator_server", node); err != nil {
+				return err
+			}
+			if err := pbutil.AppendMessage(m, "tablet_servers", node); err != nil {
+				return err
+			}
+			tableMeta, err := iproto.NewMessage("PbTableMetadata")
+			if err != nil {
+				return err
+			}
+			tm := tableMeta.ProtoReflect()
+			if err := pbutil.SetMessage(tm, "table_path", tablePathMessage(t, "demo", "kv")); err != nil {
+				return err
+			}
+			if err := pbutil.SetInt64(tm, "table_id", 31); err != nil {
+				return err
+			}
+			if err := pbutil.SetInt32(tm, "schema_id", 5); err != nil {
+				return err
+			}
+			if err := pbutil.SetBytes(tm, "table_json", []byte(`{}`)); err != nil {
+				return err
+			}
+			if err := pbutil.SetInt64(tm, "created_time", 1); err != nil {
+				return err
+			}
+			if err := pbutil.SetInt64(tm, "modified_time", 1); err != nil {
+				return err
+			}
+			bucketMeta, err := iproto.NewMessage("PbBucketMetadata")
+			if err != nil {
+				return err
+			}
+			bm := bucketMeta.ProtoReflect()
+			if err := pbutil.SetInt32(bm, "bucket_id", 0); err != nil {
+				return err
+			}
+			if err := pbutil.SetInt32(bm, "leader_id", 1); err != nil {
+				return err
+			}
+			if err := pbutil.AppendInt32(bm, "replica_id", 1); err != nil {
+				return err
+			}
+			if err := pbutil.AppendMessage(tm, "bucket_metadata", bm); err != nil {
+				return err
+			}
+			return pbutil.AppendMessage(m, "table_metadata", tm)
+		}), nil
+	})
+
+	aggMode := int32(2)
+	srv.on(protocol.PutKV, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req, err := iproto.NewMessage("PutKvRequest")
+		if err != nil {
+			return nil, err
+		}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		msg := req.ProtoReflect()
+		if acks := msg.Get(msg.Descriptor().Fields().ByName("acks")).Int(); acks != 1 {
+			t.Fatalf("expected configured acks 1, got %d", acks)
+		}
+		if timeout := msg.Get(msg.Descriptor().Fields().ByName("timeout_ms")).Int(); timeout != 9000 {
+			t.Fatalf("expected configured timeout 9000, got %d", timeout)
+		}
+		targetColumns := msg.Get(msg.Descriptor().Fields().ByName("target_columns")).List()
+		if targetColumns.Len() != 2 || targetColumns.Get(0).Int() != 1 || targetColumns.Get(1).Int() != 3 {
+			t.Fatalf("unexpected target_columns: %#v", targetColumns)
+		}
+		if gotAgg := msg.Get(msg.Descriptor().Fields().ByName("agg_mode")).Int(); gotAgg != int64(aggMode) {
+			t.Fatalf("expected agg_mode %d, got %d", aggMode, gotAgg)
+		}
+		return mustMessage(t, "PutKvResponse", func(m protoreflect.Message) error {
+			item, err := iproto.NewMessage("PbPutKvRespForBucket")
+			if err != nil {
+				return err
+			}
+			im := item.ProtoReflect()
+			if err := pbutil.SetInt32(im, "bucket_id", 0); err != nil {
+				return err
+			}
+			if err := pbutil.SetInt64(im, "log_end_offset", 77); err != nil {
+				return err
+			}
+			return pbutil.AppendMessage(m, "buckets_resp", im)
+		}), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	writer := cli.Table(TablePath{DatabaseName: "demo", TableName: "kv"}).NewUpsertWriter(UpsertOptions{
+		Acks:          1,
+		TimeoutMs:     9000,
+		TargetColumns: []int32{1, 3},
+		AggMode:       &aggMode,
+	})
+	results, err := writer.Write(ctx, []BucketRecordBatch{{
+		BucketID: 0,
+		Records:  []byte("kv-batch"),
+	}})
+	if err != nil {
+		t.Fatalf("writer.Write() error = %v", err)
+	}
+	if len(results) != 1 || results[0].LogEndOffset != 77 {
+		t.Fatalf("unexpected put results: %#v", results)
+	}
+
+	if err := writer.Close(); err != nil {
+		t.Fatalf("writer.Close() error = %v", err)
+	}
+	if _, err := writer.Write(ctx, []BucketRecordBatch{{BucketID: 0, Records: []byte("x")}}); err == nil || err != ErrClosed {
+		t.Fatalf("expected ErrClosed after Close, got %v", err)
 	}
 }

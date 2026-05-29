@@ -1,6 +1,12 @@
 package client
 
-import "github.com/chiqors/fluss-client-go/metadata"
+import (
+	"errors"
+
+	"github.com/chiqors/fluss-go-client/metadata"
+)
+
+var ErrClosed = errors.New("fluss: resource is closed")
 
 type TablePath = metadata.TablePath
 
@@ -46,6 +52,18 @@ type BucketRecordBatch struct {
 	PartitionID *int64
 	BucketID    int32
 	Records     []byte
+}
+
+type AppendOptions struct {
+	Acks      int32
+	TimeoutMs int32
+}
+
+type UpsertOptions struct {
+	Acks          int32
+	TimeoutMs     int32
+	TargetColumns []int32
+	AggMode       *int32
 }
 
 type ProduceResult struct {

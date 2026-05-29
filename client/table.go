@@ -4,9 +4,9 @@ import (
 	"context"
 	"sort"
 
-	"github.com/chiqors/fluss-client-go/internal/pbutil"
-	iproto "github.com/chiqors/fluss-client-go/internal/proto"
-	"github.com/chiqors/fluss-client-go/protocol"
+	"github.com/chiqors/fluss-go-client/internal/pbutil"
+	iproto "github.com/chiqors/fluss-go-client/internal/proto"
+	"github.com/chiqors/fluss-go-client/protocol"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
 )
@@ -14,6 +14,20 @@ import (
 type TableClient struct {
 	client *Client
 	path   TablePath
+}
+
+func (t *TableClient) NewAppendWriter(opts AppendOptions) *AppendWriter {
+	return &AppendWriter{
+		table: t,
+		opts:  opts,
+	}
+}
+
+func (t *TableClient) NewUpsertWriter(opts UpsertOptions) *UpsertWriter {
+	return &UpsertWriter{
+		table: t,
+		opts:  opts,
+	}
 }
 
 func (t *TableClient) Info(ctx context.Context) (TableInfo, error) {

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file explains how agents should work in `github.com/chiqors/fluss-client-go`.
+This file explains how agents should work in `github.com/chiqors/fluss-go-client`.
 
 The goal is consistency: future work should preserve the SDK’s design direction, keep the repo usable, and leave behind clear progress markers.
 
@@ -42,6 +42,7 @@ Agents should keep these design principles:
 - use standard Go `error` behavior, plus typed errors where callers need inspection
 - avoid exposing low-level wire details unless they are intentionally part of the SDK surface
 - avoid overcommitting unstable APIs too early
+- keep protobuf and wire-contract details as an internal implementation concern rather than the public SDK surface
 
 ## Current Architecture
 
@@ -76,6 +77,7 @@ When implementing:
 - prefer incremental, test-backed progress over sweeping rewrites
 - preserve backward compatibility for public APIs unless there is a strong reason not to
 - if a public API must change, update docs and note it in `GRAND_PLAN.md`
+- prefer Go-native public types even when internal transport uses protobuf-generated code
 
 When blocked:
 
@@ -189,12 +191,14 @@ Prefer:
 - lightweight helper clients over giant god objects
 - explicit constructors such as `client.Dial(...)`
 - Go naming over Java naming when the concepts are equivalent
+- generated protobuf Go code as an internal transport detail when the protocol layer matures
 
 Avoid:
 
 - Java-style builder sprawl unless it clearly improves the Go UX
 - exposing unstable internals as public types too early
 - locking the public API around today’s raw-byte representations if a better abstraction is imminent
+- making application code depend directly on protobuf request/response structs unless there is a very strong reason
 
 ## Upstream Java Client Usage
 
@@ -213,6 +217,12 @@ When porting behavior:
 - match semantics first
 - adapt API shape second
 - record any intentional deviation in `GRAND_PLAN.md`
+
+For protocol implementation strategy:
+
+- dynamic proto loading is acceptable as a bootstrap step
+- generated protobuf Go code is the preferred long-term internal implementation
+- public SDK APIs should remain Go-native even after the internal migration
 
 ## Demo Environment Guidance
 

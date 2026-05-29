@@ -3,9 +3,9 @@ package client
 import (
 	"fmt"
 
-	"github.com/chiqors/fluss-client-go/internal/pbutil"
-	iproto "github.com/chiqors/fluss-client-go/internal/proto"
-	"github.com/chiqors/fluss-client-go/metadata"
+	"github.com/chiqors/fluss-go-client/internal/pbutil"
+	iproto "github.com/chiqors/fluss-go-client/internal/proto"
+	"github.com/chiqors/fluss-go-client/metadata"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
