@@ -532,6 +532,7 @@ Use this section as the short memory of real repo progress.
 - [x] Aligned module path to `github.com/chiqors/fluss-client-go`
 - [x] Updated demo README to reflect the current direct-Go validation setup
 - [x] Added Phase 0 repo guardrails: CI workflow, contributing guide, and architecture overview
+- [x] Added GitHub issue and PR templates and expanded root usage documentation
 
 ## Decision Log
 
