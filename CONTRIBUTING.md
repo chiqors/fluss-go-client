@@ -77,3 +77,10 @@ Near-term priority is Phase 0 through Phase 6 in the grand plan:
 - stronger real-cluster and E2E validation
 
 If you want to propose a larger design change, document the tradeoff clearly before expanding the public surface.
+
+## Release Expectation
+
+This repo should use tagged semantic versions for public consumption.
+
+- the first public release target is `v0.1.0`
+- changes that affect public APIs should be documented with release impact in mind

@@ -178,3 +178,13 @@ Project docs:
 - Module path: `github.com/chiqors/fluss-client-go`
 
 Compatibility beyond `0.9.x` is not promised yet.
+
+## Versioning
+
+This repository should publish tagged semantic versions for Go consumers.
+
+- first public release: `v0.1.0`
+- pre-`v1` releases may still refine the API surface
+- breaking API changes before `v1.0.0` should still be called out clearly in release notes and docs
+
+For `go get`, users should prefer tagged versions over floating commits once releases are published.

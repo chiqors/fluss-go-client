@@ -96,6 +96,12 @@ When blocked:
 
 Agents must treat [GRAND_PLAN.md](/Users/administrator/Documents/Labs/fluss-client/GRAND_PLAN.md) as persistent project memory.
 
+Checklist marker convention:
+
+- `[ ]` means not started
+- `[~]` means in progress / active work in development
+- `[x]` means completed
+
 Update it when:
 
 - checklist items are completed
@@ -108,6 +114,8 @@ At minimum, meaningful work should leave behind:
 
 - updated checklist state
 - a short dated note in the `Progress Ledger`
+
+When work is started but not finished, prefer marking the relevant item as `[~]` instead of leaving it as `[ ]`.
 
 ## Testing Expectations
 

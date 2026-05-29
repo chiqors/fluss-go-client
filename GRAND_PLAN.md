@@ -11,6 +11,16 @@ Its purpose is to keep one shared memory of:
 
 Update this file whenever scope changes, major work lands, or we discover a new blocker.
 
+## Checklist Status Legend
+
+Use checklist markers consistently throughout this file:
+
+- [ ] not started
+- [~] work in progress / actively being developed
+- [x] completed
+
+Use `[~]` when work has meaningfully started but is not done yet. Once the outcome is stable and complete, convert it to `[x]`.
+
 ## Target
 
 Build a pure Go, production-ready Fluss client SDK for Fluss `0.9.x` that feels idiomatic to Go users while covering the core capabilities of the upstream Java client.
@@ -47,6 +57,10 @@ Success means a Go team can:
 - non-`0.9.x` compatibility promises
 
 ## Current Status
+
+### Versioning policy
+
+- [x] Public Go module versioning should start at `v0.1.0`
 
 ### Implemented now
 
@@ -455,7 +469,7 @@ Goal: make the SDK trustworthy to adopt.
 
 ### Release
 
-- [ ] semantic versioning policy
+- [x] semantic versioning policy
 - [ ] release checklist
 - [ ] tagged example compatibility check
 - [ ] CI release pipeline
@@ -533,6 +547,7 @@ Use this section as the short memory of real repo progress.
 - [x] Updated demo README to reflect the current direct-Go validation setup
 - [x] Added Phase 0 repo guardrails: CI workflow, contributing guide, and architecture overview
 - [x] Added GitHub issue and PR templates and expanded root usage documentation
+- [x] Recorded public versioning policy with `v0.1.0` as the first release target
 
 ## Decision Log
 
@@ -543,6 +558,7 @@ Use this section as the short memory of real repo progress.
 - [x] Go-native API shape is preferred over mirroring Java builders verbatim
 - [x] Raw byte operations are acceptable as an early foundation
 - [x] Arrow should be a first-class data path before adding rich typed mappers
+- [x] Public tagged Go module versioning should begin at `v0.1.0`
 
 ### Decisions still to make
 
@@ -556,7 +572,7 @@ Use this section as the short memory of real repo progress.
 
 When work lands:
 
-- mark completed checklist items
+- move checklist items between `[ ]`, `[~]`, and `[x]` as progress changes
 - add a short note in `Progress Ledger`
 - add new blockers or scope changes to `Current Known Gaps`
 - update `Next Recommended Work Order` if priorities change
