@@ -252,7 +252,8 @@ services:
     environment:
       FLUSS_BOOTSTRAP: coordinator-server:9123
       FLUSS_DATABASE: fluss
-      FLUSS_TABLE: e2e_orders
+      FLUSS_LOG_TABLE: e2e_orders
+      FLUSS_KV_TABLE: e2e_customers
     restart: "no"
 
 volumes:

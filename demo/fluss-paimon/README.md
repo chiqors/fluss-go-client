@@ -7,7 +7,7 @@ It uses:
 - real Fluss services
 - real Flink/Paimon tiering
 - a SQL bootstrap job that creates a simple lake-enabled table
-- a containerized Go test service that connects directly to Fluss and validates the result
+- a containerized Go test service that connects directly to Fluss and validates multiple SDK feature surfaces
 
 ## What runs
 
@@ -44,19 +44,26 @@ docker compose -f demo/fluss-paimon/docker-compose.yml down -v
 
 ## What the bootstrap creates
 
-The SQL bootstrap creates a Fluss catalog and a simple lake-enabled log table:
+The SQL bootstrap creates a Fluss catalog plus two simple tables:
 
 - database: `fluss`
-- table: `e2e_orders`
+- log table: `e2e_orders`
+- primary-key table: `e2e_customers`
 
 The Go service then:
 
 - connects to Fluss using the Go SDK
-- fetches table metadata
-- validates the schema lookup path
-- fails the container if the table cannot be resolved through the Go client
+- lists databases and tables
+- validates database and table existence checks
+- fetches table metadata and schema for both tables
+- validates partition-info listing on the non-partitioned tables
+- runs a real `LimitScan` against the log table
+- starts and closes a real `KVScanner` against the primary-key table
+- fails the container if any of those paths break against the real Fluss cluster
 
-This demo currently validates bootstrap, metadata, and schema access. It does not depend on Flink SQL data insertion, which is intentionally left out of the smoke test because that write path was not stable in this environment.
+This demo currently validates admin, metadata, log-table scan entry, and KV scanner lifecycle against a real cluster.
+
+It still does not validate append/upsert/lookup record round-trips, because the Go SDK data plane is still raw Fluss record-batch byte oriented and does not yet ship schema-aware record encoders/decoders.
 
 ## Endpoints
 

@@ -11,6 +11,7 @@ CREATE DATABASE IF NOT EXISTS fluss;
 USE fluss;
 
 DROP TABLE IF EXISTS e2e_orders;
+DROP TABLE IF EXISTS e2e_customers;
 
 CREATE TABLE e2e_orders (
   order_id BIGINT,
@@ -21,4 +22,13 @@ CREATE TABLE e2e_orders (
   'bucket.num' = '1',
   'table.datalake.enabled' = 'true',
   'table.datalake.freshness' = '30s'
+);
+
+CREATE TABLE e2e_customers (
+  customer_id BIGINT,
+  customer_name STRING,
+  customer_tier STRING,
+  PRIMARY KEY (customer_id) NOT ENFORCED
+) WITH (
+  'bucket.num' = '1'
 );
