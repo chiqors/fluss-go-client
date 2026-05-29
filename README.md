@@ -144,7 +144,7 @@ That means this SDK is already useful for protocol work, integration work, and s
 
 ## Local Demo
 
-A real containerized smoke-test environment is available under [demo/fluss-paimon](/Users/administrator/Documents/Labs/fluss-client/demo/fluss-paimon).
+A real containerized smoke-test environment is available under [demo/fluss-paimon](./demo/fluss-paimon).
 
 It boots:
 
@@ -159,7 +159,7 @@ Start it with:
 docker compose -f demo/fluss-paimon/docker-compose.yml up --build --abort-on-container-exit go-e2e
 ```
 
-See [demo/fluss-paimon/README.md](/Users/administrator/Documents/Labs/fluss-client/demo/fluss-paimon/README.md) for details.
+See [demo/fluss-paimon/README.md](./demo/fluss-paimon/README.md) for details.
 
 ## Development
 
@@ -173,10 +173,10 @@ go build ./...
 
 Project docs:
 
-- [GRAND_PLAN.md](/Users/administrator/Documents/Labs/fluss-client/GRAND_PLAN.md): roadmap and progress memory
-- [AGENTS.md](/Users/administrator/Documents/Labs/fluss-client/AGENTS.md): repo working rules
-- [CONTRIBUTING.md](/Users/administrator/Documents/Labs/fluss-client/CONTRIBUTING.md): contribution workflow
-- [docs/ARCHITECTURE.md](/Users/administrator/Documents/Labs/fluss-client/docs/ARCHITECTURE.md): current architecture
+- [GRAND_PLAN.md](./GRAND_PLAN.md): roadmap and progress memory
+- [AGENTS.md](./AGENTS.md): repo working rules
+- [CONTRIBUTING.md](./CONTRIBUTING.md): contribution workflow
+- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md): current architecture
 
 ## Compatibility
 

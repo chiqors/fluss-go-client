@@ -74,7 +74,7 @@ Success means a Go team can:
 - [x] Admin metadata calls for databases, tables, schema, and partitions
 - [x] Raw table operations for append, upsert, lookup, prefix lookup, fetch log, limit scan, and KV scan
 - [x] Unit and mock-style integration coverage for the current client surface
-- [x] Containerized Fluss/Paimon smoke-test demo at [demo/fluss-paimon/README.md](/Users/administrator/Documents/Labs/fluss-client/demo/fluss-paimon/README.md)
+- [x] Containerized Fluss/Paimon smoke-test demo at [demo/fluss-paimon/README.md](./demo/fluss-paimon/README.md)
 
 ### Proven working now
 

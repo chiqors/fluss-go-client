@@ -19,7 +19,7 @@ Agents working in this repo should optimize for correctness, testability, and co
 
 When making decisions, use these in order:
 
-1. [GRAND_PLAN.md](/Users/administrator/Documents/Labs/fluss-client/GRAND_PLAN.md)
+1. [GRAND_PLAN.md](./GRAND_PLAN.md)
 2. the current repository code
 3. the upstream Java Fluss client at `/Users/administrator/Documents/Labs/fluss/fluss-client`
 4. official Fluss documentation and protocol definitions
@@ -48,14 +48,14 @@ Agents should keep these design principles:
 
 Important packages:
 
-- [client](/Users/administrator/Documents/Labs/fluss-client/client): public-facing client/admin/table operations
-- [rpc](/Users/administrator/Documents/Labs/fluss-client/rpc): transport client and request dispatch
-- [codec](/Users/administrator/Documents/Labs/fluss-client/codec): frame encode/decode
-- [metadata](/Users/administrator/Documents/Labs/fluss-client/metadata): metadata cache and routing helpers
-- [protocol](/Users/administrator/Documents/Labs/fluss-client/protocol): API keys and protocol-level errors
-- [auth](/Users/administrator/Documents/Labs/fluss-client/auth): auth hooks
-- [internal/proto](/Users/administrator/Documents/Labs/fluss-client/internal/proto): embedded proto descriptors
-- [demo/fluss-paimon](/Users/administrator/Documents/Labs/fluss-client/demo/fluss-paimon): real-container smoke-test environment
+- [client](./client): public-facing client/admin/table operations
+- [rpc](./rpc): transport client and request dispatch
+- [codec](./codec): frame encode/decode
+- [metadata](./metadata): metadata cache and routing helpers
+- [protocol](./protocol): API keys and protocol-level errors
+- [auth](./auth): auth hooks
+- [internal/proto](./internal/proto): embedded proto descriptors
+- [demo/fluss-paimon](./demo/fluss-paimon): real-container smoke-test environment
 
 Current state:
 
@@ -67,7 +67,7 @@ Current state:
 
 Before making substantial changes:
 
-- read the relevant section of [GRAND_PLAN.md](/Users/administrator/Documents/Labs/fluss-client/GRAND_PLAN.md)
+- read the relevant section of [GRAND_PLAN.md](./GRAND_PLAN.md)
 - inspect existing code paths before proposing new structure
 - check whether the upstream Java client already has a corresponding subsystem
 
@@ -96,7 +96,7 @@ When blocked:
 
 ## Progress Memory Rules
 
-Agents must treat [GRAND_PLAN.md](/Users/administrator/Documents/Labs/fluss-client/GRAND_PLAN.md) as persistent project memory.
+Agents must treat [GRAND_PLAN.md](./GRAND_PLAN.md) as persistent project memory.
 
 Checklist marker convention:
 
@@ -133,7 +133,7 @@ For normal Go code changes:
 
 ### For demo or environment changes
 
-If touching [demo/fluss-paimon](/Users/administrator/Documents/Labs/fluss-client/demo/fluss-paimon):
+If touching [demo/fluss-paimon](./demo/fluss-paimon):
 
 - validate compose config
 - run the demo smoke test when the change can affect it
@@ -226,7 +226,7 @@ For protocol implementation strategy:
 
 ## Demo Environment Guidance
 
-The demo under [demo/fluss-paimon](/Users/administrator/Documents/Labs/fluss-client/demo/fluss-paimon) is a real smoke-test environment, not just sample code.
+The demo under [demo/fluss-paimon](./demo/fluss-paimon) is a real smoke-test environment, not just sample code.
 
 Treat it as:
 
@@ -239,9 +239,9 @@ Do not make the demo README misleading. Keep it aligned with what the demo actua
 
 When behavior changes, update the relevant docs in the same work:
 
-- [README.md](/Users/administrator/Documents/Labs/fluss-client/README.md)
-- [GRAND_PLAN.md](/Users/administrator/Documents/Labs/fluss-client/GRAND_PLAN.md)
-- [demo/fluss-paimon/README.md](/Users/administrator/Documents/Labs/fluss-client/demo/fluss-paimon/README.md)
+- [README.md](./README.md)
+- [GRAND_PLAN.md](./GRAND_PLAN.md)
+- [demo/fluss-paimon/README.md](./demo/fluss-paimon/README.md)
 
 If a capability is partial or experimental, say so plainly.
 
@@ -267,7 +267,7 @@ A task is in good shape when:
 
 When starting work here:
 
-1. Read [GRAND_PLAN.md](/Users/administrator/Documents/Labs/fluss-client/GRAND_PLAN.md).
+1. Read [GRAND_PLAN.md](./GRAND_PLAN.md).
 2. Check current repo status and recent changes.
 3. Inspect the relevant package and tests.
 4. Use the upstream Java client only as a behavioral reference.

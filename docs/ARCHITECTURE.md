@@ -17,45 +17,45 @@ The SDK is designed to:
 
 ### Public-facing packages
 
-- [client](/Users/administrator/Documents/Labs/fluss-client/client)
+- [client](./client)
   - entry point for dialing the cluster
   - admin and table-level operations
   - user-facing config and result types
 
 ### Protocol and transport
 
-- [rpc](/Users/administrator/Documents/Labs/fluss-client/rpc)
+- [rpc](./rpc)
   - connection management
   - request dispatch and response correlation
   - API negotiation and auth hook integration
 
-- [codec](/Users/administrator/Documents/Labs/fluss-client/codec)
+- [codec](./codec)
   - Fluss frame encode/decode logic
 
-- [protocol](/Users/administrator/Documents/Labs/fluss-client/protocol)
+- [protocol](./protocol)
   - API key definitions
   - protocol-level error types
 
 ### Metadata and routing
 
-- [metadata](/Users/administrator/Documents/Labs/fluss-client/metadata)
+- [metadata](./metadata)
   - table path and routing metadata helpers
   - metadata cache used by the client layer
 
 ### Internal support
 
-- [auth](/Users/administrator/Documents/Labs/fluss-client/auth)
+- [auth](./auth)
   - pluggable auth interfaces
 
-- [internal/proto](/Users/administrator/Documents/Labs/fluss-client/internal/proto)
+- [internal/proto](./internal/proto)
   - embedded Fluss proto descriptors used by the current dynamic-proto implementation
 
-- [internal/pbutil](/Users/administrator/Documents/Labs/fluss-client/internal/pbutil)
+- [internal/pbutil](./internal/pbutil)
   - protobuf helper utilities
 
 ### Demo environment
 
-- [demo/fluss-paimon](/Users/administrator/Documents/Labs/fluss-client/demo/fluss-paimon)
+- [demo/fluss-paimon](./demo/fluss-paimon)
   - real-container smoke-test environment
   - validates direct Go client access against a local Fluss stack
 
@@ -103,4 +103,4 @@ The next major steps are:
 5. security and observability hardening
 6. migrate protocol internals from dynamic proto handling to generated protobuf Go code
 
-See [GRAND_PLAN.md](/Users/administrator/Documents/Labs/fluss-client/GRAND_PLAN.md) for the detailed roadmap and current checklist state.
+See [GRAND_PLAN.md](./GRAND_PLAN.md) for the detailed roadmap and current checklist state.

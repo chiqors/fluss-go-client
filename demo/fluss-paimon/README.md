@@ -68,7 +68,7 @@ This demo currently validates bootstrap, metadata, and schema access. It does no
 
 ## Files
 
-- Compose stack: [docker-compose.yml](/Users/administrator/Documents/Labs/fluss-client/demo/fluss-paimon/docker-compose.yml)
-- SQL bootstrap: [sql/bootstrap.sql](/Users/administrator/Documents/Labs/fluss-client/demo/fluss-paimon/sql/bootstrap.sql)
-- Go E2E container: [go-e2e.Dockerfile](/Users/administrator/Documents/Labs/fluss-client/demo/fluss-paimon/go-e2e.Dockerfile)
-- Go E2E program: [demo/fluss-paimon/go-e2e/main.go](/Users/administrator/Documents/Labs/fluss-client/demo/fluss-paimon/go-e2e/main.go)
+- Compose stack: [docker-compose.yml](./demo/fluss-paimon/docker-compose.yml)
+- SQL bootstrap: [sql/bootstrap.sql](./demo/fluss-paimon/sql/bootstrap.sql)
+- Go E2E container: [go-e2e.Dockerfile](./demo/fluss-paimon/go-e2e.Dockerfile)
+- Go E2E program: [demo/fluss-paimon/go-e2e/main.go](./demo/fluss-paimon/go-e2e/main.go)

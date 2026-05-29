@@ -8,9 +8,9 @@ This project is building toward a production-ready pure Go Fluss client SDK. The
 
 Read these first:
 
-- [AGENTS.md](/Users/administrator/Documents/Labs/fluss-client/AGENTS.md)
-- [GRAND_PLAN.md](/Users/administrator/Documents/Labs/fluss-client/GRAND_PLAN.md)
-- [README.md](/Users/administrator/Documents/Labs/fluss-client/README.md)
+- [AGENTS.md](./AGENTS.md)
+- [GRAND_PLAN.md](./GRAND_PLAN.md)
+- [README.md](./README.md)
 
 Use the upstream Java client at `/Users/administrator/Documents/Labs/fluss/fluss-client` as a behavioral reference when needed, but do not assume the Go SDK should mirror Java package or API shapes exactly.
 
@@ -32,7 +32,7 @@ go test ./...
 go build ./...
 ```
 
-If you change the demo stack under [demo/fluss-paimon](/Users/administrator/Documents/Labs/fluss-client/demo/fluss-paimon), also run:
+If you change the demo stack under [demo/fluss-paimon](./demo/fluss-paimon), also run:
 
 ```bash
 docker compose -f demo/fluss-paimon/docker-compose.yml config
@@ -59,7 +59,7 @@ Each non-trivial change should include:
 
 ## Reporting Progress
 
-This repo uses [GRAND_PLAN.md](/Users/administrator/Documents/Labs/fluss-client/GRAND_PLAN.md) as persistent project memory.
+This repo uses [GRAND_PLAN.md](./GRAND_PLAN.md) as persistent project memory.
 
 When your work materially advances the project:
 
