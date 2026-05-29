@@ -1,0 +1,427 @@
+syntax = "proto2";
+
+package fluss;
+
+message ErrorResponse {
+  required int32 error_code = 1;
+  optional string error_message = 2;
+}
+
+message ApiVersionsRequest {
+  required string client_software_name = 1;
+  required string client_software_version = 2;
+}
+
+message PbApiVersion {
+  required int32 api_key = 1;
+  required int32 min_version = 2;
+  required int32 max_version = 3;
+}
+
+message ApiVersionsResponse {
+  repeated PbApiVersion api_versions = 1;
+  optional int32 server_type = 2;
+}
+
+message PbTablePath {
+  required string database_name = 1;
+  required string table_name = 2;
+}
+
+message PbPhysicalTablePath {
+  required string database_name = 1;
+  required string table_name = 2;
+  optional string partition_name = 3;
+}
+
+message PbServerNode {
+  required int32 node_id = 1;
+  required string host = 2;
+  required int32 port = 3;
+  optional string listeners = 4;
+  optional string rack = 5;
+}
+
+message PbBucketMetadata {
+  required int32 bucket_id = 1;
+  optional int32 leader_id = 2;
+  repeated int32 replica_id = 3 [packed = true];
+  optional int32 leader_epoch = 4;
+}
+
+message PbTableMetadata {
+  required PbTablePath table_path = 1;
+  required int64 table_id = 2;
+  required int32 schema_id = 3;
+  required bytes table_json = 4;
+  repeated PbBucketMetadata bucket_metadata = 5;
+  required int64 created_time = 6;
+  required int64 modified_time = 7;
+  optional string remote_data_dir = 8;
+}
+
+message PbPartitionMetadata {
+  required int64 table_id = 1;
+  required string partition_name = 2;
+  required int64 partition_id = 3;
+  repeated PbBucketMetadata bucket_metadata = 4;
+}
+
+message MetadataRequest {
+  repeated PbTablePath table_path = 1;
+  repeated PbPhysicalTablePath partitions_path = 2;
+  repeated int64 partitions_id = 3 [packed = true];
+}
+
+message MetadataResponse {
+  optional PbServerNode coordinator_server = 1;
+  repeated PbServerNode tablet_servers = 2;
+  repeated PbTableMetadata table_metadata = 3;
+  repeated PbPartitionMetadata partition_metadata = 4;
+}
+
+message GetTableSchemaRequest {
+  required PbTablePath table_path = 1;
+  optional int32 schema_id = 2;
+}
+
+message GetTableSchemaResponse {
+  required int32 schema_id = 1;
+  required bytes schema_json = 2;
+}
+
+message CreateDatabaseRequest {
+  required string database_name = 1;
+  required bool ignore_if_exists = 2;
+  optional bytes database_json = 3;
+}
+
+message CreateDatabaseResponse {}
+
+message DropDatabaseRequest {
+  required string database_name = 1;
+  required bool ignore_if_not_exists = 2;
+  required bool cascade = 3;
+}
+
+message DropDatabaseResponse {}
+
+message GetDatabaseInfoRequest {
+  required string database_name = 1;
+}
+
+message GetDatabaseInfoResponse {
+  required bytes database_json = 3;
+  required int64 created_time = 4;
+  required int64 modified_time = 5;
+}
+
+message DatabaseExistsRequest {
+  required string database_name = 1;
+}
+
+message DatabaseExistsResponse {
+  required bool exists = 1;
+}
+
+message PbDatabaseSummary {
+  required string database_name = 1;
+  required int64 created_time = 2;
+  required int32 table_count = 3;
+}
+
+message ListDatabasesRequest {
+  optional bool include_summary = 1;
+}
+
+message ListDatabasesResponse {
+  repeated string database_name = 1;
+  repeated PbDatabaseSummary database_summary = 2;
+}
+
+message CreateTableRequest {
+  required PbTablePath table_path = 1;
+  required bytes table_json = 2;
+  required bool ignore_if_exists = 3;
+}
+
+message CreateTableResponse {}
+
+message DropTableRequest {
+  required PbTablePath table_path = 1;
+  required bool ignore_if_not_exists = 2;
+}
+
+message DropTableResponse {}
+
+message GetTableInfoRequest {
+  required PbTablePath table_path = 1;
+}
+
+message GetTableInfoResponse {
+  required int64 table_id = 1;
+  required int32 schema_id = 2;
+  required bytes table_json = 3;
+  required int64 created_time = 4;
+  required int64 modified_time = 5;
+  optional string remote_data_dir = 6;
+}
+
+message ListTablesRequest {
+  required string database_name = 1;
+}
+
+message ListTablesResponse {
+  repeated string table_name = 1;
+}
+
+message TableExistsRequest {
+  required PbTablePath table_path = 1;
+}
+
+message TableExistsResponse {
+  required bool exists = 1;
+}
+
+message GetFileSystemSecurityTokenRequest {}
+
+message GetFileSystemSecurityTokenResponse {
+  required string schema = 1;
+  required bytes token = 2;
+  optional int64 expiration_time = 3;
+}
+
+message PbKeyValue {
+  required string key = 1;
+  required string value = 2;
+}
+
+message PbPartitionSpec {
+  repeated PbKeyValue partition_key_values = 1;
+}
+
+message ListPartitionInfosRequest {
+  required PbTablePath table_path = 1;
+  optional PbPartitionSpec partial_partition_spec = 2;
+}
+
+message PbPartitionInfo {
+  required int64 partition_id = 1;
+  required PbPartitionSpec partition_spec = 2;
+  optional string remote_data_dir = 3;
+}
+
+message ListPartitionInfosResponse {
+  repeated PbPartitionInfo partitions_info = 1;
+}
+
+message PbProduceLogReqForBucket {
+  optional int64 partition_id = 1;
+  required int32 bucket_id = 2;
+  required bytes records = 3;
+}
+
+message ProduceLogRequest {
+  required int32 acks = 1;
+  required int64 table_id = 2;
+  required int32 timeout_ms = 3;
+  repeated PbProduceLogReqForBucket buckets_req = 4;
+}
+
+message PbProduceLogRespForBucket {
+  optional int64 partition_id = 1;
+  required int32 bucket_id = 2;
+  optional int32 error_code = 3;
+  optional string error_message = 4;
+  optional int64 base_offset = 5;
+}
+
+message ProduceLogResponse {
+  repeated PbProduceLogRespForBucket buckets_resp = 1;
+}
+
+message PbPutKvReqForBucket {
+  optional int64 partition_id = 1;
+  required int32 bucket_id = 2;
+  required bytes records = 3;
+}
+
+message PutKvRequest {
+  required int32 acks = 1;
+  required int64 table_id = 2;
+  required int32 timeout_ms = 3;
+  repeated int32 target_columns = 4 [packed = true];
+  repeated PbPutKvReqForBucket buckets_req = 5;
+  optional int32 agg_mode = 6;
+}
+
+message PbPutKvRespForBucket {
+  optional int64 partition_id = 1;
+  required int32 bucket_id = 2;
+  optional int32 error_code = 3;
+  optional string error_message = 4;
+  optional int64 log_end_offset = 5;
+}
+
+message PutKvResponse {
+  repeated PbPutKvRespForBucket buckets_resp = 1;
+}
+
+message PbLookupReqForBucket {
+  optional int64 partition_id = 1;
+  required int32 bucket_id = 2;
+  repeated bytes keys = 3;
+}
+
+message LookupRequest {
+  required int64 table_id = 1;
+  repeated PbLookupReqForBucket buckets_req = 2;
+  optional bool insert_if_not_exists = 3;
+  optional int32 acks = 4;
+  optional int32 timeout_ms = 5;
+}
+
+message PbValue {
+  optional bytes values = 1;
+}
+
+message PbLookupRespForBucket {
+  optional int64 partition_id = 1;
+  required int32 bucket_id = 2;
+  optional int32 error_code = 3;
+  optional string error_message = 4;
+  repeated PbValue values = 5;
+}
+
+message LookupResponse {
+  repeated PbLookupRespForBucket buckets_resp = 1;
+}
+
+message PbPrefixLookupReqForBucket {
+  optional int64 partition_id = 1;
+  required int32 bucket_id = 2;
+  repeated bytes keys = 3;
+}
+
+message PrefixLookupRequest {
+  required int64 table_id = 1;
+  repeated PbPrefixLookupReqForBucket buckets_req = 2;
+}
+
+message PbValueList {
+  repeated bytes values = 1;
+}
+
+message PbPrefixLookupRespForBucket {
+  optional int64 partition_id = 1;
+  required int32 bucket_id = 2;
+  optional int32 error_code = 3;
+  optional string error_message = 4;
+  repeated PbValueList value_lists = 5;
+}
+
+message PrefixLookupResponse {
+  repeated PbPrefixLookupRespForBucket buckets_resp = 1;
+}
+
+message PbFetchLogReqForBucket {
+  optional int64 partition_id = 1;
+  required int32 bucket_id = 2;
+  required int64 fetch_offset = 3;
+  required int32 max_fetch_bytes = 4;
+}
+
+message PbFetchLogReqForTable {
+  required int64 table_id = 1;
+  required bool projection_pushdown_enabled = 2;
+  repeated int32 projected_fields = 3 [packed = true];
+  repeated PbFetchLogReqForBucket buckets_req = 4;
+}
+
+message FetchLogRequest {
+  required int32 follower_server_id = 1;
+  required int32 max_bytes = 2;
+  repeated PbFetchLogReqForTable tables_req = 3;
+  optional int32 max_wait_ms = 4;
+  optional int32 min_bytes = 5;
+}
+
+message PbRemoteLogFetchInfo {
+  required string remote_log_tablet_dir = 1;
+}
+
+message PbFetchLogRespForBucket {
+  optional int64 partition_id = 1;
+  required int32 bucket_id = 2;
+  optional int32 error_code = 3;
+  optional string error_message = 4;
+  optional int64 high_watermark = 5;
+  optional int64 log_start_offset = 6;
+  optional PbRemoteLogFetchInfo remote_log_fetch_info = 7;
+  optional bytes records = 8;
+  optional int64 filtered_end_offset = 9;
+}
+
+message PbFetchLogRespForTable {
+  required int64 table_id = 1;
+  repeated PbFetchLogRespForBucket buckets_resp = 2;
+}
+
+message FetchLogResponse {
+  repeated PbFetchLogRespForTable tables_resp = 1;
+}
+
+message LimitScanRequest {
+  required int64 table_id = 2;
+  optional int64 partition_id = 3;
+  required int32 bucket_id = 4;
+  required int32 limit = 5;
+}
+
+message LimitScanResponse{
+  optional int32 error_code = 1;
+  optional string error_message = 2;
+  optional bool is_log_table = 3;
+  optional bytes records = 4;
+}
+
+message PbScanReqForBucket {
+  required int64 table_id = 1;
+  optional int64 partition_id = 2;
+  required int32 bucket_id = 3;
+  optional int64 limit = 4;
+}
+
+message ScanKvRequest {
+  optional bytes scanner_id = 1;
+  optional PbScanReqForBucket bucket_scan_req = 2;
+  optional int32 call_seq_id = 3;
+  optional int32 batch_size_bytes = 4;
+  optional bool close_scanner = 5;
+}
+
+message ScanKvResponse {
+  optional int32 error_code = 1;
+  optional string error_message = 2;
+  optional bytes scanner_id = 3;
+  optional bool has_more_results = 4;
+  optional bytes records = 5;
+  optional int64 log_offset = 6;
+}
+
+message InitWriterRequest {
+  repeated PbTablePath table_path = 1;
+}
+
+message InitWriterResponse {
+  required int64 writer_id = 1;
+}
+
+message AuthenticateRequest {
+  required string protocol = 1;
+  required bytes token = 2;
+}
+
+message AuthenticateResponse {
+  optional bytes challenge = 1;
+}
