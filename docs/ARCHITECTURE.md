@@ -49,9 +49,13 @@ The SDK is designed to:
 
 - [internal/proto](./internal/proto)
   - embedded Fluss proto descriptors used by the current dynamic-proto implementation
+  - source `.proto` definitions for future generated protobuf Go code
 
 - [internal/pbutil](./internal/pbutil)
   - protobuf helper utilities
+
+- `internal/proto/gen`
+  - generated internal protobuf Go code
 
 ### Demo environment
 

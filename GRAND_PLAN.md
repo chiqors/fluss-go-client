@@ -165,7 +165,7 @@ Goal: make the wire layer stable and debuggable.
 - [x] Public SDK surface should remain Go-native
 - [x] Internal wire/protocol layer should target generated protobuf Go code
 - [~] Dynamic proto loading remains a temporary bootstrap foundation until generated protobuf migration lands
-- [ ] Introduce protobuf code generation workflow
+- [~] Introduce protobuf code generation workflow
 - [ ] Migrate request builders from dynamic messages to generated protobuf structs
 - [ ] Keep generated protobuf code internal and avoid exposing it as the main SDK surface
 
@@ -559,6 +559,7 @@ Use this section as the short memory of real repo progress.
 - [x] Recorded public versioning policy with `v0.1.0` as the first release target
 - [x] Added first lightweight writer abstractions for append and upsert flows
 - [x] Recorded architecture direction: Go-native public API with generated protobuf internals as the target
+- [x] Added initial protobuf generation scaffold under `internal/proto/gen`
 
 ## Decision Log
 

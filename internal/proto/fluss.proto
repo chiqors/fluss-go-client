@@ -1,6 +1,7 @@
 syntax = "proto2";
 
 package fluss;
+option go_package = "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss;flusspb";
 
 message ErrorResponse {
   required int32 error_code = 1;

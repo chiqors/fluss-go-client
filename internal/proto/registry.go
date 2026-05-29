@@ -1,21 +1,13 @@
 package proto
 
 import (
-	_ "embed"
 	"fmt"
-	"io"
-	"strings"
 	"sync"
 
-	"github.com/jhump/protoreflect/desc"
-	"github.com/jhump/protoreflect/desc/protoparse"
-	"google.golang.org/protobuf/reflect/protodesc"
+	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
 )
-
-//go:embed fluss.proto
-var flussProto string
 
 var (
 	once  sync.Once
@@ -26,27 +18,7 @@ var (
 
 func fileDescriptor() (protoreflect.FileDescriptor, error) {
 	once.Do(func() {
-		parser := protoparse.Parser{
-			Accessor: func(name string) (io.ReadCloser, error) {
-				if name != "fluss.proto" {
-					return nil, fmt.Errorf("unknown proto %q", name)
-				}
-				return io.NopCloser(strings.NewReader(flussProto)), nil
-			},
-		}
-		var files []*desc.FileDescriptor
-		files, fdErr = parser.ParseFiles("fluss.proto")
-		if fdErr != nil {
-			return
-		}
-		if len(files) != 1 {
-			fdErr = fmt.Errorf("unexpected file count %d", len(files))
-			return
-		}
-		fd, fdErr = protodesc.NewFile(files[0].AsFileDescriptorProto(), nil)
-		if fdErr != nil {
-			return
-		}
+		fd = flusspb.File_fluss_proto
 		index = map[string]protoreflect.MessageDescriptor{}
 		msgs := fd.Messages()
 		for i := 0; i < msgs.Len(); i++ {
