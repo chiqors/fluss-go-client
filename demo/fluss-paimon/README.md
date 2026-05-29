@@ -2,7 +2,7 @@
 
 This demo is a trimmed-down end-to-end stack for the Go client.
 
-It removes the old ingestion path through Redpanda, Fluss CAPE, and `fhir-olap-pipes`, and replaces it with:
+It uses:
 
 - real Fluss services
 - real Flink/Paimon tiering
