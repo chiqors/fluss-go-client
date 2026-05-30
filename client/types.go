@@ -42,11 +42,73 @@ type PartitionKV struct {
 	Value string
 }
 
+type PartitionSpec []PartitionKV
+
 type PartitionInfo struct {
 	PartitionID   int64
 	PartitionSpec []PartitionKV
 	RemoteDataDir string
 }
+
+type AlterConfigOp int32
+
+const (
+	AlterConfigSet      AlterConfigOp = 0
+	AlterConfigDelete   AlterConfigOp = 1
+	AlterConfigAppend   AlterConfigOp = 2
+	AlterConfigSubtract AlterConfigOp = 3
+)
+
+type ColumnPositionType int32
+
+const (
+	ColumnPositionLast  ColumnPositionType = 0
+	ColumnPositionFirst ColumnPositionType = 1
+	ColumnPositionAfter ColumnPositionType = 3
+)
+
+type AlterTableChange interface {
+	alterTableChange()
+}
+
+type TableConfigChange struct {
+	Key   string
+	Value *string
+	Op    AlterConfigOp
+}
+
+func (TableConfigChange) alterTableChange() {}
+
+type AddColumnChange struct {
+	ColumnName         string
+	DataTypeJSON       []byte
+	Comment            *string
+	ColumnPositionType ColumnPositionType
+}
+
+func (AddColumnChange) alterTableChange() {}
+
+type DropColumnChange struct {
+	ColumnName string
+}
+
+func (DropColumnChange) alterTableChange() {}
+
+type RenameColumnChange struct {
+	OldColumnName string
+	NewColumnName string
+}
+
+func (RenameColumnChange) alterTableChange() {}
+
+type ModifyColumnChange struct {
+	ColumnName         string
+	DataTypeJSON       []byte
+	Comment            *string
+	ColumnPositionType *ColumnPositionType
+}
+
+func (ModifyColumnChange) alterTableChange() {}
 
 type SnapshotFile struct {
 	RemotePath    string

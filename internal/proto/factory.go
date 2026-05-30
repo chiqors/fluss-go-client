@@ -55,6 +55,10 @@ func New(name string) (proto.Message, error) {
 		return &flusspb.CreateTableRequest{}, nil
 	case "CreateTableResponse":
 		return &flusspb.CreateTableResponse{}, nil
+	case "AlterTableRequest":
+		return &flusspb.AlterTableRequest{}, nil
+	case "AlterTableResponse":
+		return &flusspb.AlterTableResponse{}, nil
 	case "DropTableRequest":
 		return &flusspb.DropTableRequest{}, nil
 	case "DropTableResponse":
@@ -71,6 +75,14 @@ func New(name string) (proto.Message, error) {
 		return &flusspb.ListPartitionInfosRequest{}, nil
 	case "ListPartitionInfosResponse":
 		return &flusspb.ListPartitionInfosResponse{}, nil
+	case "CreatePartitionRequest":
+		return &flusspb.CreatePartitionRequest{}, nil
+	case "CreatePartitionResponse":
+		return &flusspb.CreatePartitionResponse{}, nil
+	case "DropPartitionRequest":
+		return &flusspb.DropPartitionRequest{}, nil
+	case "DropPartitionResponse":
+		return &flusspb.DropPartitionResponse{}, nil
 	case "ProduceLogRequest":
 		return &flusspb.ProduceLogRequest{}, nil
 	case "ProduceLogResponse":

@@ -220,11 +220,16 @@ func TestDialAndAdminFlow(t *testing.T) {
 			flusspb.ApiKey_GetMetadata,
 			flusspb.ApiKey_ListDatabases,
 			flusspb.ApiKey_DatabaseExists,
+			flusspb.ApiKey_CreateTable,
+			flusspb.ApiKey_AlterTable,
+			flusspb.ApiKey_DropTable,
 			flusspb.ApiKey_GetTableInfo,
 			flusspb.ApiKey_GetTableSchema,
 			flusspb.ApiKey_ListTables,
 			flusspb.ApiKey_TableExists,
 			flusspb.ApiKey_ListPartitionInfos,
+			flusspb.ApiKey_CreatePartition,
+			flusspb.ApiKey_DropPartition,
 			flusspb.ApiKey_LimitScan,
 			flusspb.ApiKey_PrefixLookup,
 		)), nil
@@ -283,6 +288,109 @@ func TestDialAndAdminFlow(t *testing.T) {
 			SchemaId:   proto.Int32(3),
 			SchemaJson: []byte(`{"fields":[{"name":"id"}]}`),
 		}), nil
+	})
+
+	srv.on(flusspb.ApiKey_AlterTable, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.AlterTableRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if req.GetTablePath().GetDatabaseName() != "demo" || req.GetTablePath().GetTableName() != "events" {
+			t.Fatalf("unexpected alter table path: %#v", req.GetTablePath())
+		}
+		if req.GetIgnoreIfNotExists() {
+			t.Fatalf("expected ignore_if_not_exists to be false")
+		}
+		if len(req.GetConfigChanges()) != 1 || len(req.GetAddColumns()) != 1 || len(req.GetDropColumns()) != 1 || len(req.GetRenameColumns()) != 1 || len(req.GetModifyColumns()) != 1 {
+			t.Fatalf("unexpected alter table change counts: %#v", req)
+		}
+		if req.GetConfigChanges()[0].GetConfigKey() != "client.connect-timeout" || req.GetConfigChanges()[0].GetConfigValue() != "240s" || req.GetConfigChanges()[0].GetOpType() != int32(AlterConfigSet) {
+			t.Fatalf("unexpected config change: %#v", req.GetConfigChanges()[0])
+		}
+		if req.GetAddColumns()[0].GetColumnName() != "c1" || string(req.GetAddColumns()[0].GetDataTypeJson()) != `{"type":"string"}` || req.GetAddColumns()[0].GetColumnPositionType() != int32(ColumnPositionLast) {
+			t.Fatalf("unexpected add column change: %#v", req.GetAddColumns()[0])
+		}
+		if req.GetDropColumns()[0].GetColumnName() != "legacy_col" {
+			t.Fatalf("unexpected drop column change: %#v", req.GetDropColumns()[0])
+		}
+		if req.GetRenameColumns()[0].GetOldColumnName() != "old_name" || req.GetRenameColumns()[0].GetNewColumnName() != "new_name" {
+			t.Fatalf("unexpected rename column change: %#v", req.GetRenameColumns()[0])
+		}
+		if req.GetModifyColumns()[0].GetColumnName() != "name" || string(req.GetModifyColumns()[0].GetDataTypeJson()) != `{"type":"string","nullable":true}` || req.GetModifyColumns()[0].GetColumnPositionType() != int32(ColumnPositionFirst) {
+			t.Fatalf("unexpected modify column change: %#v", req.GetModifyColumns()[0])
+		}
+		return mustMarshal(t, &flusspb.AlterTableResponse{}), nil
+	})
+
+	srv.on(flusspb.ApiKey_CreatePartition, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.CreatePartitionRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if req.GetTablePath().GetDatabaseName() != "demo" || req.GetTablePath().GetTableName() != "events" {
+			t.Fatalf("unexpected create partition path: %#v", req.GetTablePath())
+		}
+		if !req.GetIgnoreIfNotExists() {
+			t.Fatalf("expected ignore_if_not_exists to be true")
+		}
+		kvs := req.GetPartitionSpec().GetPartitionKeyValues()
+		if len(kvs) != 1 || kvs[0].GetKey() != "pt" || kvs[0].GetValue() != "2025" {
+			t.Fatalf("unexpected create partition spec: %#v", req.GetPartitionSpec())
+		}
+		return mustMarshal(t, &flusspb.CreatePartitionResponse{}), nil
+	})
+
+	srv.on(flusspb.ApiKey_DropPartition, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.DropPartitionRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if req.GetTablePath().GetDatabaseName() != "demo" || req.GetTablePath().GetTableName() != "events" {
+			t.Fatalf("unexpected drop partition path: %#v", req.GetTablePath())
+		}
+		if req.GetIgnoreIfNotExists() {
+			t.Fatalf("expected ignore_if_not_exists to be false")
+		}
+		kvs := req.GetPartitionSpec().GetPartitionKeyValues()
+		if len(kvs) != 1 || kvs[0].GetKey() != "pt" || kvs[0].GetValue() != "2025" {
+			t.Fatalf("unexpected drop partition spec: %#v", req.GetPartitionSpec())
+		}
+		return mustMarshal(t, &flusspb.DropPartitionResponse{}), nil
+	})
+
+	srv.on(flusspb.ApiKey_ListPartitionInfos, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.ListPartitionInfosRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if req.GetTablePath().GetDatabaseName() != "demo" || req.GetTablePath().GetTableName() != "events" {
+			t.Fatalf("unexpected list partition infos path: %#v", req.GetTablePath())
+		}
+		resp := &flusspb.ListPartitionInfosResponse{
+			PartitionsInfo: []*flusspb.PbPartitionInfo{
+				{
+					PartitionId: proto.Int64(101),
+					PartitionSpec: &flusspb.PbPartitionSpec{
+						PartitionKeyValues: []*flusspb.PbKeyValue{{
+							Key:   proto.String("pt"),
+							Value: proto.String("2025"),
+						}},
+					},
+					RemoteDataDir: proto.String("s3://bucket/partitions/2025"),
+				},
+			},
+		}
+		if req.GetPartialPartitionSpec() != nil {
+			kvs := req.GetPartialPartitionSpec().GetPartitionKeyValues()
+			if len(kvs) != 1 || kvs[0].GetKey() != "pt" || kvs[0].GetValue() != "2025" {
+				t.Fatalf("unexpected partial partition spec: %#v", req.GetPartialPartitionSpec())
+			}
+		}
+		return mustMarshal(t, resp), nil
 	})
 
 	srv.on(flusspb.ApiKey_LimitScan, func(reqID int32, payload []byte) ([]byte, error) {
@@ -365,6 +473,44 @@ func TestDialAndAdminFlow(t *testing.T) {
 	}
 	if schema.SchemaID != 3 {
 		t.Fatalf("unexpected schema: %#v", schema)
+	}
+
+	comment := "renamed column"
+	firstPos := ColumnPositionFirst
+	timeoutValue := "240s"
+	if err := cli.Admin().AlterTable(ctx, TablePath{DatabaseName: "demo", TableName: "events"}, []AlterTableChange{
+		TableConfigChange{Key: "client.connect-timeout", Value: &timeoutValue, Op: AlterConfigSet},
+		AddColumnChange{ColumnName: "c1", DataTypeJSON: []byte(`{"type":"string"}`), ColumnPositionType: ColumnPositionLast},
+		DropColumnChange{ColumnName: "legacy_col"},
+		RenameColumnChange{OldColumnName: "old_name", NewColumnName: "new_name"},
+		ModifyColumnChange{ColumnName: "name", DataTypeJSON: []byte(`{"type":"string","nullable":true}`), Comment: &comment, ColumnPositionType: &firstPos},
+	}, false); err != nil {
+		t.Fatalf("AlterTable() error = %v", err)
+	}
+
+	if err := cli.Admin().CreatePartition(ctx, TablePath{DatabaseName: "demo", TableName: "events"}, PartitionSpec{
+		{Key: "pt", Value: "2025"},
+	}, true); err != nil {
+		t.Fatalf("CreatePartition() error = %v", err)
+	}
+
+	partitions, err := cli.Admin().ListPartitionInfosWithSpec(ctx, TablePath{DatabaseName: "demo", TableName: "events"}, PartitionSpec{
+		{Key: "pt", Value: "2025"},
+	})
+	if err != nil {
+		t.Fatalf("ListPartitionInfosWithSpec() error = %v", err)
+	}
+	if len(partitions) != 1 || partitions[0].PartitionID != 101 || partitions[0].RemoteDataDir != "s3://bucket/partitions/2025" {
+		t.Fatalf("unexpected filtered partition infos: %#v", partitions)
+	}
+	if len(partitions[0].PartitionSpec) != 1 || partitions[0].PartitionSpec[0].Key != "pt" || partitions[0].PartitionSpec[0].Value != "2025" {
+		t.Fatalf("unexpected filtered partition spec: %#v", partitions[0].PartitionSpec)
+	}
+
+	if err := cli.Admin().DropPartition(ctx, TablePath{DatabaseName: "demo", TableName: "events"}, PartitionSpec{
+		{Key: "pt", Value: "2025"},
+	}, false); err != nil {
+		t.Fatalf("DropPartition() error = %v", err)
 	}
 
 	limitResult, err := cli.Table(TablePath{DatabaseName: "demo", TableName: "events"}).LimitScan(ctx, nil, 0, 10)

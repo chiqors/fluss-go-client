@@ -60,6 +60,7 @@ Success means a Go team can:
 
 ### Progress Ledger
 
+- 2026-05-30: implemented the first missing admin-mutation parity slice using the upstream Java RPC contract as the wire reference, adding public Go support for `AlterTable`, `CreatePartition`, `DropPartition`, and filtered `ListPartitionInfos`, plus regenerated proto coverage and mock integration assertions for the request shapes.
 - 2026-05-30: completed the first primary-key snapshot batch-scan implementation slice by adding public snapshot storage config, a MinIO-backed remote snapshot downloader, a public `TableClient.SnapshotScanRows(...)` helper, and mock/integration coverage; after real-cluster validation showed Fluss snapshot local-reader portability is still messy across Pebble/RocksDB approaches, snapshot batch scan was pulled back out of the canonical demo support contract and remains deferred pending a cleaner implementation strategy.
 - 2026-05-30: started the primary-key snapshot batch-scan vertical slice by adding upstream-aligned KV snapshot admin metadata support in the Go proto/client layer (`GetLatestKvSnapshots`, `GetKvSnapshotMetadata`, `GetLakeSnapshot`) with local integration coverage; the remote snapshot-file scanner still remains to be implemented before snapshot batch scan can be claimed in the support matrix.
 - 2026-05-30: corrected compacted row/key wire semantics to follow the upstream Java client more closely for primary-key flows, including Fluss-style compacted signed varints plus compacted length-prefixed string/bytes decoding and targeted compacted PK row tests.
@@ -262,8 +263,10 @@ Goal: ship a solid, documented admin surface.
 
 - [x] Database exists/get/list/create/drop
 - [x] Table exists/get/list/create/drop
+- [x] Table alter
 - [x] Schema retrieval
 - [x] Partition listing/info
+- [x] Partition create/drop
 - [ ] API documentation for each admin call
 - [ ] Option structs for advanced requests where needed
 

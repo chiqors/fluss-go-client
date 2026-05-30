@@ -165,6 +165,40 @@ func (a *AdminClient) CreateTable(ctx context.Context, path TablePath, tableJSON
 	return err
 }
 
+func (a *AdminClient) AlterTable(ctx context.Context, path TablePath, changes []AlterTableChange, ignoreIfNotExists bool) error {
+	_, err := a.invokeCoordinator(ctx, flusspb.ApiKey_AlterTable, "AlterTableRequest", "AlterTableResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.AlterTableRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected alter table request type %T", msg)
+		}
+		req.TablePath = buildTablePath(path)
+		req.IgnoreIfNotExists = proto.Bool(ignoreIfNotExists)
+		for _, change := range changes {
+			switch v := change.(type) {
+			case TableConfigChange:
+				req.ConfigChanges = append(req.ConfigChanges, buildAlterConfig(v))
+			case AddColumnChange:
+				req.AddColumns = append(req.AddColumns, buildAddColumn(v))
+			case DropColumnChange:
+				req.DropColumns = append(req.DropColumns, &flusspb.PbDropColumn{
+					ColumnName: proto.String(v.ColumnName),
+				})
+			case RenameColumnChange:
+				req.RenameColumns = append(req.RenameColumns, &flusspb.PbRenameColumn{
+					OldColumnName: proto.String(v.OldColumnName),
+					NewColumnName: proto.String(v.NewColumnName),
+				})
+			case ModifyColumnChange:
+				req.ModifyColumns = append(req.ModifyColumns, buildModifyColumn(v))
+			default:
+				return fmt.Errorf("fluss: unsupported alter table change type %T", change)
+			}
+		}
+		return nil
+	})
+	return err
+}
+
 func (a *AdminClient) DropTable(ctx context.Context, path TablePath, ignoreIfNotExists bool) error {
 	_, err := a.invokeCoordinator(ctx, flusspb.ApiKey_DropTable, "DropTableRequest", "DropTableResponse", func(msg proto.Message) error {
 		req, ok := msg.(*flusspb.DropTableRequest)
@@ -239,12 +273,19 @@ func (a *AdminClient) GetTableSchema(ctx context.Context, path TablePath, schema
 }
 
 func (a *AdminClient) ListPartitionInfos(ctx context.Context, path TablePath) ([]PartitionInfo, error) {
+	return a.ListPartitionInfosWithSpec(ctx, path, nil)
+}
+
+func (a *AdminClient) ListPartitionInfosWithSpec(ctx context.Context, path TablePath, spec PartitionSpec) ([]PartitionInfo, error) {
 	resp, err := a.invokeAny(ctx, flusspb.ApiKey_ListPartitionInfos, "ListPartitionInfosRequest", "ListPartitionInfosResponse", func(msg proto.Message) error {
 		req, ok := msg.(*flusspb.ListPartitionInfosRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected list partition infos request type %T", msg)
 		}
 		req.TablePath = buildTablePath(path)
+		if spec != nil {
+			req.PartialPartitionSpec = buildPartitionSpec(spec)
+		}
 		return nil
 	})
 	if err != nil {
@@ -265,9 +306,38 @@ func (a *AdminClient) ListPartitionInfos(ctx context.Context, path TablePath) ([
 				})
 			}
 		}
+		info.RemoteDataDir = item.GetRemoteDataDir()
 		out = append(out, info)
 	}
 	return out, nil
+}
+
+func (a *AdminClient) CreatePartition(ctx context.Context, path TablePath, spec PartitionSpec, ignoreIfNotExists bool) error {
+	_, err := a.invokeCoordinator(ctx, flusspb.ApiKey_CreatePartition, "CreatePartitionRequest", "CreatePartitionResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.CreatePartitionRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected create partition request type %T", msg)
+		}
+		req.TablePath = buildTablePath(path)
+		req.PartitionSpec = buildPartitionSpec(spec)
+		req.IgnoreIfNotExists = proto.Bool(ignoreIfNotExists)
+		return nil
+	})
+	return err
+}
+
+func (a *AdminClient) DropPartition(ctx context.Context, path TablePath, spec PartitionSpec, ignoreIfNotExists bool) error {
+	_, err := a.invokeCoordinator(ctx, flusspb.ApiKey_DropPartition, "DropPartitionRequest", "DropPartitionResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.DropPartitionRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected drop partition request type %T", msg)
+		}
+		req.TablePath = buildTablePath(path)
+		req.PartitionSpec = buildPartitionSpec(spec)
+		req.IgnoreIfNotExists = proto.Bool(ignoreIfNotExists)
+		return nil
+	})
+	return err
 }
 
 func (a *AdminClient) GetLatestKvSnapshots(ctx context.Context, path TablePath, partitionName *string) (KvSnapshots, error) {
@@ -427,4 +497,59 @@ func (a *AdminClient) invokeCoordinator(ctx context.Context, api flusspb.ApiKey,
 		}
 	}
 	return a.invokeAny(ctx, api, reqName, respName, build)
+}
+
+func buildPartitionSpec(spec PartitionSpec) *flusspb.PbPartitionSpec {
+	if spec == nil {
+		return nil
+	}
+	out := &flusspb.PbPartitionSpec{
+		PartitionKeyValues: make([]*flusspb.PbKeyValue, 0, len(spec)),
+	}
+	for _, kv := range spec {
+		out.PartitionKeyValues = append(out.PartitionKeyValues, &flusspb.PbKeyValue{
+			Key:   proto.String(kv.Key),
+			Value: proto.String(kv.Value),
+		})
+	}
+	return out
+}
+
+func buildAlterConfig(change TableConfigChange) *flusspb.PbAlterConfig {
+	out := &flusspb.PbAlterConfig{
+		ConfigKey: proto.String(change.Key),
+		OpType:    proto.Int32(int32(change.Op)),
+	}
+	if change.Value != nil {
+		out.ConfigValue = proto.String(*change.Value)
+	}
+	return out
+}
+
+func buildAddColumn(change AddColumnChange) *flusspb.PbAddColumn {
+	out := &flusspb.PbAddColumn{
+		ColumnName:         proto.String(change.ColumnName),
+		DataTypeJson:       append([]byte(nil), change.DataTypeJSON...),
+		ColumnPositionType: proto.Int32(int32(change.ColumnPositionType)),
+	}
+	if change.Comment != nil {
+		out.Comment = proto.String(*change.Comment)
+	}
+	return out
+}
+
+func buildModifyColumn(change ModifyColumnChange) *flusspb.PbModifyColumn {
+	out := &flusspb.PbModifyColumn{
+		ColumnName: proto.String(change.ColumnName),
+	}
+	if change.DataTypeJSON != nil {
+		out.DataTypeJson = append([]byte(nil), change.DataTypeJSON...)
+	}
+	if change.Comment != nil {
+		out.Comment = proto.String(*change.Comment)
+	}
+	if change.ColumnPositionType != nil {
+		out.ColumnPositionType = proto.Int32(int32(*change.ColumnPositionType))
+	}
+	return out
 }

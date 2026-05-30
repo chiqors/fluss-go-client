@@ -83,15 +83,15 @@ For more details, see [Data Types](https://fluss.apache.org/docs/table-design/da
 | Database | DatabaseExists | ✔️ | ✔️ |
 | Database | GetDatabaseInfo | ✔️ | ✔️ |
 | Database | ListDatabases | ✔️ | ✔️ |
-| Table | AlterTable | ✔️ |  |
+| Table | AlterTable | ✔️ | ✔️ |
 | Table | CreateTable | ✔️ | ✔️ |
 | Table | DropTable | ✔️ | ✔️ |
 | Table | GetTableSchema | ✔️ | ✔️ |
 | Table | GetTableInfo | ✔️ | ✔️ |
 | Table | ListTables | ✔️ | ✔️ |
-| Partition | CreatePartition | ✔️ |  |
-| Partition | DropPartition | ✔️ |  |
-| Partition | ListPartitionInfos | ✔️ |  |
+| Partition | CreatePartition | ✔️ | ✔️ |
+| Partition | DropPartition | ✔️ | ✔️ |
+| Partition | ListPartitionInfos | ✔️ | ✔️ |
 | Snapshot | GetKvSnapshotMetadata | ✔️ | ✔️ |
 | Snapshot | GetLatestKvSnapshots | ✔️ | ✔️ |
 | Snapshot | GetLatestLakeSnapshot | ✔️ | ✔️ |

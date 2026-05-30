@@ -50,7 +50,13 @@ enum ApiKey {
   LimitScan = 1033;
   PrefixLookup = 1034;
   GetDatabaseInfo = 1035;
+  CreatePartition = 1036;
+  DropPartition = 1037;
   Authenticate = 1038;
+  CreateAcls = 1039;
+  ListAcls = 1040;
+  DropAcls = 1041;
+  AlterTable = 1044;
   ScanKV = 1059;
 }
 
@@ -184,6 +190,18 @@ message CreateTableRequest {
 
 message CreateTableResponse {}
 
+message AlterTableRequest {
+  required PbTablePath table_path = 1;
+  required bool ignore_if_not_exists = 2;
+  repeated PbAlterConfig config_changes = 3;
+  repeated PbAddColumn add_columns = 4;
+  repeated PbDropColumn drop_columns = 5;
+  repeated PbRenameColumn rename_columns = 6;
+  repeated PbModifyColumn modify_columns = 7;
+}
+
+message AlterTableResponse {}
+
 message DropTableRequest {
   required PbTablePath table_path = 1;
   required bool ignore_if_not_exists = 2;
@@ -248,9 +266,54 @@ message PbPartitionInfo {
   optional string remote_data_dir = 3;
 }
 
+message PbAlterConfig {
+  required string config_key = 1;
+  optional string config_value = 2;
+  required int32 op_type = 3;
+}
+
+message PbAddColumn {
+  required string column_name = 1;
+  required bytes data_type_json = 2;
+  optional string comment = 3;
+  required int32 column_position_type = 4;
+}
+
+message PbDropColumn {
+  required string column_name = 1;
+}
+
+message PbRenameColumn {
+  required string old_column_name = 1;
+  required string new_column_name = 2;
+}
+
+message PbModifyColumn {
+  required string column_name = 1;
+  optional bytes data_type_json = 2;
+  optional string comment = 3;
+  optional int32 column_position_type = 4;
+}
+
 message ListPartitionInfosResponse {
   repeated PbPartitionInfo partitions_info = 1;
 }
+
+message CreatePartitionRequest {
+  required PbTablePath table_path = 1;
+  required PbPartitionSpec partition_spec = 2;
+  required bool ignore_if_not_exists = 3;
+}
+
+message CreatePartitionResponse {}
+
+message DropPartitionRequest {
+  required PbTablePath table_path = 1;
+  required PbPartitionSpec partition_spec = 2;
+  required bool ignore_if_not_exists = 3;
+}
+
+message DropPartitionResponse {}
 
 message PbProduceLogReqForBucket {
   optional int64 partition_id = 1;
