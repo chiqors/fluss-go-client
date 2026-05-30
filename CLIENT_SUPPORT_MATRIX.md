@@ -33,7 +33,7 @@ These operations live under the table append, scan, upsert, and lookup surfaces.
 | Primary Key | Batch Scan with Limit | ✔️ |  |
 | Primary Key | Batch Scan (Snapshot) | ✔️ |  |
 
-For more details, see [Table Overview](https://fluss.apache.org/docs/table-design/data-types/).
+For more details, see [Table Overview](https://fluss.apache.org/docs/table-design/overview).
 
 ## Data Types
 
@@ -62,9 +62,7 @@ For more details, see [Table Overview](https://fluss.apache.org/docs/table-desig
 | MAP<kt, vt> | ✔️ | ✔️ |
 | ROW<n0 t0, n1 t1, ...> | ✔️ | ✔️ |
 
-:::tip
-For more details, see [Data Types](table-design/data-types.md).
-:::
+For more details, see [Data Types](https://fluss.apache.org/docs/table-design/data-types).
 
 Current verification level:
 - scalar and composite row encoding/decoding is covered by local Go round-trip tests
@@ -114,4 +112,4 @@ Current verification level:
 
 For Go, `Paimon` here means the SDK is validated against a Fluss deployment configured with Paimon-backed lakehouse infrastructure. It does not imply additional lake-specific public APIs beyond the flows currently implemented and exercised.
 
-For more details, see [Streaming Lakehouse](https://fluss.apache.org/docs/streaming-lakehouse/overview/).
+For more details, see [Streaming Lakehouse](https://fluss.apache.org/docs/streaming-lakehouse/overview).
