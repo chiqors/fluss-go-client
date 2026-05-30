@@ -64,6 +64,7 @@ Success means a Go team can:
 - 2026-05-30: finished stabilizing the canonical Fluss+Paimon admin lifecycle E2E against the real cluster, including valid Fluss descriptor JSON for temp database/table creation and clearer `ListDatabases` logging when the server returns only database summaries; the admin contract run is now green end-to-end.
 - 2026-05-30: added real-cluster negative-path admin assertions to the canonical Fluss+Paimon harness, verifying duplicate create and missing drop/alter semantics for database, table, and partition operations with and without ignore flags.
 - 2026-05-30: productized the first public writer slice by upgrading `AppendWriter` and `UpsertWriter` from thin pass-through helpers into buffered writers with explicit `Flush(ctx)`, buffered-capacity controls, `CloseWithContext(ctx)` flush-on-close semantics, and integration coverage for buffer limits and lifecycle behavior.
+- 2026-05-30: added the first writer flush retry hardening pass, teaching log and KV write flush paths to perform a one-time metadata refresh and reroute retry for leader/routing-style write failures, with integration coverage for append and upsert retry-after-refresh behavior.
 - 2026-05-30: completed the remaining currently-scoped admin parity batch from the upstream Java protocol definitions, adding Go support for cluster config describe/alter, server tag add/remove, rebalance start/progress/cancel, and ACL list/create/drop, with regenerated proto coverage and mock integration request assertions.
 - 2026-05-30: implemented the first missing admin-mutation parity slice using the upstream Java RPC contract as the wire reference, adding public Go support for `AlterTable`, `CreatePartition`, `DropPartition`, and filtered `ListPartitionInfos`, plus regenerated proto coverage and mock integration assertions for the request shapes.
 - 2026-05-30: completed the first primary-key snapshot batch-scan implementation slice by adding public snapshot storage config, a MinIO-backed remote snapshot downloader, a public `TableClient.SnapshotScanRows(...)` helper, and mock/integration coverage; after real-cluster validation showed Fluss snapshot local-reader portability is still messy across Pebble/RocksDB approaches, snapshot batch scan was pulled back out of the canonical demo support contract and remains deferred pending a cleaner implementation strategy.
@@ -326,7 +327,7 @@ Goal: move from raw RPC operations to usable production writers.
 
 ### Reliability
 
-- [ ] stale metadata retry on write
+- [~] stale metadata retry on write
 - [ ] partial failure handling
 - [ ] idempotence strategy decision
 - [ ] timeout and cancellation semantics

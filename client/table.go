@@ -2,8 +2,10 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/chiqors/fluss-go-client/internal/metadata"
 	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
@@ -39,43 +41,42 @@ func (t *TableClient) Schema(ctx context.Context, schemaID *int32) (SchemaInfo, 
 }
 
 func (t *TableClient) AppendLog(ctx context.Context, acks int32, timeoutMs int32, buckets []BucketRecordBatch) ([]ProduceResult, error) {
-	tableInfo, err := t.ensureTableInfo(ctx)
-	if err != nil {
-		return nil, err
-	}
-	grouped, err := t.groupBatchesByLeader(ctx, tableInfo.ID, buckets)
-	if err != nil {
-		return nil, err
-	}
-	var out []ProduceResult
-	for addr, batchList := range grouped {
-		resp, err := t.client.rpc.Invoke(ctx, addr, flusspb.ApiKey_ProduceLog, "ProduceLogRequest", "ProduceLogResponse", func(m proto.Message) error {
-			req, ok := m.(*flusspb.ProduceLogRequest)
-			if !ok {
-				return fmt.Errorf("fluss: unexpected produce log request type %T", m)
-			}
-			req.Acks = proto.Int32(acks)
-			req.TableId = proto.Int64(tableInfo.ID)
-			req.TimeoutMs = proto.Int32(timeoutMs)
-			for _, batch := range batchList {
-				req.BucketsReq = append(req.BucketsReq, buildProduceBucketRecord(batch.PartitionID, batch.BucketID, batch.Records))
-			}
-			return nil
-		})
-		if err != nil {
-			return nil, err
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		results, err := t.appendLogOnce(ctx, acks, timeoutMs, buckets)
+		if err == nil {
+			return results, nil
 		}
-		results, err := parseProduceResults(resp.(proto.Message))
-		if err != nil {
-			return nil, err
+		lastErr = err
+		if attempt == 1 || !isRetryableWriteRouteErr(err) {
+			break
 		}
-		out = append(out, results...)
+		if refreshErr := t.client.RefreshMetadata(ctx, []TablePath{t.path}, nil); refreshErr != nil {
+			break
+		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].BucketID < out[j].BucketID })
-	return out, nil
+	return nil, lastErr
 }
 
 func (t *TableClient) UpsertKV(ctx context.Context, acks int32, timeoutMs int32, targetColumns []int32, aggMode *int32, buckets []BucketRecordBatch) ([]PutResult, error) {
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		results, err := t.upsertKVOnce(ctx, acks, timeoutMs, targetColumns, aggMode, buckets)
+		if err == nil {
+			return results, nil
+		}
+		lastErr = err
+		if attempt == 1 || !isRetryableWriteRouteErr(err) {
+			break
+		}
+		if refreshErr := t.client.RefreshMetadata(ctx, []TablePath{t.path}, nil); refreshErr != nil {
+			break
+		}
+	}
+	return nil, lastErr
+}
+
+func (t *TableClient) upsertKVOnce(ctx context.Context, acks int32, timeoutMs int32, targetColumns []int32, aggMode *int32, buckets []BucketRecordBatch) ([]PutResult, error) {
 	tableInfo, err := t.ensureTableInfo(ctx)
 	if err != nil {
 		return nil, err
@@ -112,6 +113,43 @@ func (t *TableClient) UpsertKV(ctx context.Context, acks int32, timeoutMs int32,
 		}
 		out = append(out, results...)
 	}
+	return out, nil
+}
+
+func (t *TableClient) appendLogOnce(ctx context.Context, acks int32, timeoutMs int32, buckets []BucketRecordBatch) ([]ProduceResult, error) {
+	tableInfo, err := t.ensureTableInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	grouped, err := t.groupBatchesByLeader(ctx, tableInfo.ID, buckets)
+	if err != nil {
+		return nil, err
+	}
+	var out []ProduceResult
+	for addr, batchList := range grouped {
+		resp, err := t.client.rpc.Invoke(ctx, addr, flusspb.ApiKey_ProduceLog, "ProduceLogRequest", "ProduceLogResponse", func(m proto.Message) error {
+			req, ok := m.(*flusspb.ProduceLogRequest)
+			if !ok {
+				return fmt.Errorf("fluss: unexpected produce log request type %T", m)
+			}
+			req.Acks = proto.Int32(acks)
+			req.TableId = proto.Int64(tableInfo.ID)
+			req.TimeoutMs = proto.Int32(timeoutMs)
+			for _, batch := range batchList {
+				req.BucketsReq = append(req.BucketsReq, buildProduceBucketRecord(batch.PartitionID, batch.BucketID, batch.Records))
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		results, err := parseProduceResults(resp.(proto.Message))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, results...)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].BucketID < out[j].BucketID })
 	return out, nil
 }
 
@@ -357,4 +395,16 @@ func (t *TableClient) lookupCommon(ctx context.Context, api flusspb.ApiKey, reqN
 		out = append(out, results...)
 	}
 	return out, nil
+}
+
+func isRetryableWriteRouteErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, protocol.ErrLeaderNotAvailable) {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "fluss: no route for table=") ||
+		strings.Contains(msg, "fluss: leader ")
 }
