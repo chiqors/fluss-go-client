@@ -7,6 +7,7 @@ import (
 )
 
 var ErrClosed = errors.New("fluss: resource is closed")
+var ErrBufferFull = errors.New("fluss: writer buffer is full")
 
 type TablePath = metadata.TablePath
 
@@ -226,15 +227,19 @@ type BucketRecordBatch struct {
 }
 
 type AppendOptions struct {
-	Acks      int32
-	TimeoutMs int32
+	Acks               int32
+	TimeoutMs          int32
+	MaxBufferedBatches int
+	FlushOnClose       *bool
 }
 
 type UpsertOptions struct {
-	Acks          int32
-	TimeoutMs     int32
-	TargetColumns []int32
-	AggMode       *int32
+	Acks               int32
+	TimeoutMs          int32
+	TargetColumns      []int32
+	AggMode            *int32
+	MaxBufferedBatches int
+	FlushOnClose       *bool
 }
 
 type ProduceResult struct {

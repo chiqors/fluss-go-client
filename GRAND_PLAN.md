@@ -63,6 +63,7 @@ Success means a Go team can:
 - 2026-05-30: extended the canonical Fluss+Paimon real-cluster harness to cover safe admin lifecycle semantics as well, adding database create/drop, database info, table exists, temporary table create/alter/drop, and partition create/list/filter/drop checks while intentionally leaving cluster-global admin mutations outside the single-cluster demo contract.
 - 2026-05-30: finished stabilizing the canonical Fluss+Paimon admin lifecycle E2E against the real cluster, including valid Fluss descriptor JSON for temp database/table creation and clearer `ListDatabases` logging when the server returns only database summaries; the admin contract run is now green end-to-end.
 - 2026-05-30: added real-cluster negative-path admin assertions to the canonical Fluss+Paimon harness, verifying duplicate create and missing drop/alter semantics for database, table, and partition operations with and without ignore flags.
+- 2026-05-30: productized the first public writer slice by upgrading `AppendWriter` and `UpsertWriter` from thin pass-through helpers into buffered writers with explicit `Flush(ctx)`, buffered-capacity controls, `CloseWithContext(ctx)` flush-on-close semantics, and integration coverage for buffer limits and lifecycle behavior.
 - 2026-05-30: completed the remaining currently-scoped admin parity batch from the upstream Java protocol definitions, adding Go support for cluster config describe/alter, server tag add/remove, rebalance start/progress/cancel, and ACL list/create/drop, with regenerated proto coverage and mock integration request assertions.
 - 2026-05-30: implemented the first missing admin-mutation parity slice using the upstream Java RPC contract as the wire reference, adding public Go support for `AlterTable`, `CreatePartition`, `DropPartition`, and filtered `ListPartitionInfos`, plus regenerated proto coverage and mock integration assertions for the request shapes.
 - 2026-05-30: completed the first primary-key snapshot batch-scan implementation slice by adding public snapshot storage config, a MinIO-backed remote snapshot downloader, a public `TableClient.SnapshotScanRows(...)` helper, and mock/integration coverage; after real-cluster validation showed Fluss snapshot local-reader portability is still messy across Pebble/RocksDB approaches, snapshot batch scan was pulled back out of the canonical demo support contract and remains deferred pending a cleaner implementation strategy.
@@ -109,7 +110,7 @@ Success means a Go team can:
 
 - [~] Arrow record batch decoding/encoding as a first-class public API
 - [~] Stable typed row abstraction beyond raw bytes
-- [ ] Higher-level writer types with batching, flush, retry, and lifecycle semantics
+- [~] Higher-level writer types with batching, flush, retry, and lifecycle semantics
 - [ ] Higher-level scanner types with iterator or poll abstractions
 - [ ] Robust reconnect and retry policy coverage under failure
 - [ ] Security token / auth workflows beyond the basic no-auth path
@@ -154,7 +155,7 @@ This Go client should pursue parity in layers rather than trying to clone every 
 
 - [x] Foundation: protocol, transport, metadata, basic admin
 - [~] Raw table data operations: broad public coverage now exists for admin, log, lookup, delete, projection, KV limit-scan, and demo-first KV snapshot-scan flows, but higher-level writer/scanner ergonomics and proven real-cluster snapshot parity are still pending
-- [ ] Writer subsystem parity
+- [~] Writer subsystem parity
 - [ ] Scanner subsystem parity
 - [x] Lookup ergonomics parity
 - [~] Typed mapping parity
@@ -309,10 +310,10 @@ Goal: move from raw RPC operations to usable production writers.
 
 - [~] `AppendWriter`
 - [~] `UpsertWriter`
-- [ ] explicit `Flush()` semantics
-- [~] explicit `Close()` semantics
+- [x] explicit `Flush()` semantics
+- [x] explicit `Close()` semantics
 - [ ] backpressure behavior
-- [ ] batch size controls
+- [~] batch size controls
 - [ ] linger/flush interval controls
 - [ ] per-bucket routing and retry behavior
 
@@ -337,7 +338,7 @@ Goal: move from raw RPC operations to usable production writers.
 - [ ] delete E2E
 - [ ] retry-after-leader-move E2E
 - [ ] concurrent writers E2E
-- [ ] cancellation/close behavior tests
+- [x] cancellation/close behavior tests
 
 Exit criteria:
 

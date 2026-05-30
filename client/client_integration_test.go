@@ -198,6 +198,23 @@ func metadataResponseForSingleBucketWithJSON(host string, port int32, path Table
 	return resp
 }
 
+func metadataResponseForBuckets(host string, port int32, path TablePath, tableID int64, schemaID int32, bucketIDs ...int32) *flusspb.MetadataResponse {
+	if len(bucketIDs) == 0 {
+		bucketIDs = []int32{0}
+	}
+	resp := metadataResponseForSingleBucket(host, port, path, tableID, schemaID)
+	resp.TableMetadata[0].BucketMetadata = nil
+	for _, bucketID := range bucketIDs {
+		resp.TableMetadata[0].BucketMetadata = append(resp.TableMetadata[0].BucketMetadata, &flusspb.PbBucketMetadata{
+			BucketId:    proto.Int32(bucketID),
+			LeaderId:    proto.Int32(1),
+			ReplicaId:   []int32{1},
+			LeaderEpoch: proto.Int32(1),
+		})
+	}
+	return resp
+}
+
 func TestDialAndAdminFlow(t *testing.T) {
 	srv := newMockFlussServer(t)
 	defer srv.Close()
@@ -1520,11 +1537,13 @@ func TestAppendWriterLifecycleAndDefaults(t *testing.T) {
 	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
-		return mustMarshal(t, metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "logs"}, 21, 2)), nil
+		return mustMarshal(t, metadataResponseForBuckets(host, int32(port), TablePath{DatabaseName: "demo", TableName: "logs"}, 21, 2, 0, 1)), nil
 	})
 
+	var produceCalls int
 	srv.on(flusspb.ApiKey_ProduceLog, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
+		produceCalls++
 		req := &flusspb.ProduceLogRequest{}
 		if err := proto.Unmarshal(payload, req); err != nil {
 			return nil, err
@@ -1563,6 +1582,9 @@ func TestAppendWriterLifecycleAndDefaults(t *testing.T) {
 	if len(results) != 1 || results[0].BaseOffset != 42 {
 		t.Fatalf("unexpected produce results: %#v", results)
 	}
+	if produceCalls != 1 {
+		t.Fatalf("expected 1 produce call, got %d", produceCalls)
+	}
 
 	if err := writer.Close(); err != nil {
 		t.Fatalf("writer.Close() error = %v", err)
@@ -1598,8 +1620,10 @@ func TestUpsertWriterLifecycleAndOptions(t *testing.T) {
 	})
 
 	aggMode := int32(2)
+	var putCalls int
 	srv.on(flusspb.ApiKey_PutKV, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
+		putCalls++
 		req := &flusspb.PutKvRequest{}
 		if err := proto.Unmarshal(payload, req); err != nil {
 			return nil, err
@@ -1650,12 +1674,259 @@ func TestUpsertWriterLifecycleAndOptions(t *testing.T) {
 	if len(results) != 1 || results[0].LogEndOffset != 77 {
 		t.Fatalf("unexpected put results: %#v", results)
 	}
+	if putCalls != 1 {
+		t.Fatalf("expected 1 put call, got %d", putCalls)
+	}
 
 	if err := writer.Close(); err != nil {
 		t.Fatalf("writer.Close() error = %v", err)
 	}
 	if _, err := writer.Write(ctx, []BucketRecordBatch{{BucketID: 0, Records: []byte("x")}}); err == nil || err != ErrClosed {
 		t.Fatalf("expected ErrClosed after Close, got %v", err)
+	}
+}
+
+func TestAppendWriterBufferedFlushAndCloseWithContext(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata, flusspb.ApiKey_ProduceLog)), nil
+	})
+
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, metadataResponseForBuckets(host, int32(port), TablePath{DatabaseName: "demo", TableName: "logs"}, 21, 2, 0, 1)), nil
+	})
+
+	var produceCalls int
+	var lastBucketCount int
+	srv.on(flusspb.ApiKey_ProduceLog, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		produceCalls++
+		req := &flusspb.ProduceLogRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		lastBucketCount = len(req.GetBucketsReq())
+		return mustMarshal(t, &flusspb.ProduceLogResponse{
+			BucketsResp: []*flusspb.PbProduceLogRespForBucket{
+				{BucketId: proto.Int32(0), BaseOffset: proto.Int64(10)},
+				{BucketId: proto.Int32(1), BaseOffset: proto.Int64(11)},
+			},
+		}), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	writer := cli.Table(TablePath{DatabaseName: "demo", TableName: "logs"}).NewAppendWriter(AppendOptions{
+		MaxBufferedBatches: 4,
+	})
+	results, err := writer.Write(ctx, []BucketRecordBatch{
+		{BucketID: 0, Records: []byte("a")},
+		{BucketID: 1, Records: []byte("b")},
+	})
+	if err != nil {
+		t.Fatalf("writer.Write() error = %v", err)
+	}
+	if results != nil {
+		t.Fatalf("expected nil results for buffered write, got %#v", results)
+	}
+	if writer.BufferedLen() != 2 {
+		t.Fatalf("expected 2 buffered batches, got %d", writer.BufferedLen())
+	}
+	if produceCalls != 0 {
+		t.Fatalf("expected no produce before flush, got %d calls", produceCalls)
+	}
+
+	flushed, err := writer.Flush(ctx)
+	if err != nil {
+		t.Fatalf("writer.Flush() error = %v", err)
+	}
+	if len(flushed) != 2 {
+		t.Fatalf("expected 2 flush results, got %#v", flushed)
+	}
+	if produceCalls != 1 || lastBucketCount != 2 {
+		t.Fatalf("unexpected flush call stats: calls=%d buckets=%d", produceCalls, lastBucketCount)
+	}
+	if writer.BufferedLen() != 0 {
+		t.Fatalf("expected empty buffer after flush, got %d", writer.BufferedLen())
+	}
+
+	if _, err := writer.Write(ctx, []BucketRecordBatch{{BucketID: 0, Records: []byte("c")}}); err != nil {
+		t.Fatalf("writer.Write() second buffer error = %v", err)
+	}
+	if err := writer.CloseWithContext(ctx); err != nil {
+		t.Fatalf("writer.CloseWithContext() error = %v", err)
+	}
+	if produceCalls != 2 {
+		t.Fatalf("expected close flush to trigger second produce call, got %d", produceCalls)
+	}
+	if _, err := writer.Flush(ctx); err == nil || err != ErrClosed {
+		t.Fatalf("expected ErrClosed from Flush after close, got %v", err)
+	}
+}
+
+func TestAppendWriterBufferLimit(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata, flusspb.ApiKey_ProduceLog)), nil
+	})
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "logs"}, 21, 2)), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	bufferedWriter := cli.Table(TablePath{DatabaseName: "demo", TableName: "logs"}).NewAppendWriter(AppendOptions{
+		MaxBufferedBatches: 2,
+	})
+	if _, err := bufferedWriter.Write(ctx, []BucketRecordBatch{{BucketID: 0, Records: []byte("a")}}); err != nil {
+		t.Fatalf("bufferedWriter first write error = %v", err)
+	}
+	if _, err := bufferedWriter.Write(ctx, []BucketRecordBatch{
+		{BucketID: 1, Records: []byte("b")},
+		{BucketID: 2, Records: []byte("c")},
+	}); err == nil || err != ErrBufferFull {
+		t.Fatalf("expected ErrBufferFull, got %v", err)
+	}
+}
+
+func TestUpsertWriterBufferedFlushAndCloseWithContext(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata, flusspb.ApiKey_PutKV)), nil
+	})
+
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, metadataResponseForBuckets(host, int32(port), TablePath{DatabaseName: "demo", TableName: "kv"}, 31, 5, 0, 1)), nil
+	})
+
+	var putCalls int
+	var lastBucketCount int
+	srv.on(flusspb.ApiKey_PutKV, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		putCalls++
+		req := &flusspb.PutKvRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		lastBucketCount = len(req.GetBucketsReq())
+		return mustMarshal(t, &flusspb.PutKvResponse{
+			BucketsResp: []*flusspb.PbPutKvRespForBucket{
+				{BucketId: proto.Int32(0), LogEndOffset: proto.Int64(20)},
+				{BucketId: proto.Int32(1), LogEndOffset: proto.Int64(21)},
+			},
+		}), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	writer := cli.Table(TablePath{DatabaseName: "demo", TableName: "kv"}).NewUpsertWriter(UpsertOptions{
+		MaxBufferedBatches: 4,
+	})
+	results, err := writer.Write(ctx, []BucketRecordBatch{
+		{BucketID: 0, Records: []byte("a")},
+		{BucketID: 1, Records: []byte("b")},
+	})
+	if err != nil {
+		t.Fatalf("writer.Write() error = %v", err)
+	}
+	if results != nil {
+		t.Fatalf("expected nil results for buffered write, got %#v", results)
+	}
+	if writer.BufferedLen() != 2 {
+		t.Fatalf("expected 2 buffered batches, got %d", writer.BufferedLen())
+	}
+	if putCalls != 0 {
+		t.Fatalf("expected no put before flush, got %d calls", putCalls)
+	}
+
+	flushed, err := writer.Flush(ctx)
+	if err != nil {
+		t.Fatalf("writer.Flush() error = %v", err)
+	}
+	if len(flushed) != 2 {
+		t.Fatalf("expected 2 flush results, got %#v", flushed)
+	}
+	if putCalls != 1 || lastBucketCount != 2 {
+		t.Fatalf("unexpected flush call stats: calls=%d buckets=%d", putCalls, lastBucketCount)
+	}
+
+	if _, err := writer.Write(ctx, []BucketRecordBatch{{BucketID: 0, Records: []byte("c")}}); err != nil {
+		t.Fatalf("writer.Write() second buffer error = %v", err)
+	}
+	if err := writer.CloseWithContext(ctx); err != nil {
+		t.Fatalf("writer.CloseWithContext() error = %v", err)
+	}
+	if putCalls != 2 {
+		t.Fatalf("expected close flush to trigger second put call, got %d", putCalls)
+	}
+	if _, err := writer.Flush(ctx); err == nil || err != ErrClosed {
+		t.Fatalf("expected ErrClosed from Flush after close, got %v", err)
 	}
 }
 

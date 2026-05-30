@@ -1,63 +1,69 @@
 # fluss-go-client
 
-Pure Go Fluss client SDK for Fluss `0.9.x`.
+Unofficial Go client SDK for Apache Fluss `0.9.x`.
 
-This repository is building toward a production-ready, Go-native client for Apache Fluss without requiring Java in the application runtime path.
+This repository is building a Go-native Fluss client without requiring Java in the application runtime path.
 
 ## Status
 
-The project already has a working core foundation, but it is not fully production-ready yet.
+The SDK is real, working, and actively developed, but it is not production-ready yet.
 
-Current implementation status:
+Today it already includes:
 
-- Native TCP RPC framing and request multiplexing
-- Runtime loading of Fluss protobuf descriptors from embedded `.proto`
-- API version negotiation and pluggable auth hook
-- Metadata cache and bucket leader routing
-- Admin APIs for database/table/schema/partition metadata
-- Raw table operations for append, upsert, partial update, delete, lookup, prefix lookup, fetch log, limit scan, and KV scan, with primary-key helpers now choosing the table KV format from metadata
-- Real-cluster E2E coverage for indexed log round-trips, Arrow log projection, primary-key data operations, and Paimon-backed deployment validation
+- direct TCP client connectivity to Fluss
+- admin APIs for database, table, schema, and partition operations
+- data operations for append, upsert, partial update, delete, lookup, prefix lookup, fetch log, and limit scan
+- public row/schema/type helpers for the currently implemented data types
+- Arrow log fetch/projection support on Fluss `ARROW` log tables
+- buffered `AppendWriter` and `UpsertWriter` with explicit `Flush(ctx)` and flush-on-close behavior
+- a real Fluss + Paimon container demo used as the canonical end-to-end support check
 
-The current data APIs operate on Fluss wire-format record batches as raw bytes. Arrow-first row
-encoders/decoders and richer typed row helpers are intentionally left as the next layer on top of
-this foundation.
+## What Is Supported
 
-Current Arrow note:
+High level:
 
-- Fluss defaults `ARROW` log compression to `ZSTD`
-- the canonical support-contract E2E now validates Arrow projection on a dedicated `ARROW` table using the normal default-compression path
+- Fluss `0.9.x`
+- Go-native admin workflows
+- log-table writes and reads
+- primary-key upsert, lookup, partial update, delete, prefix lookup, and limit scan
+- implemented scalar and composite Fluss data types in the current row helpers
+- validation against a Fluss deployment configured with Paimon-backed lakehouse infrastructure
 
-## Current Scope
+For the detailed support matrix, see [CLIENT_SUPPORT_MATRIX.md](./CLIENT_SUPPORT_MATRIX.md).
 
-Today, this repo is best understood as:
+## What Is Not Supported Yet
 
-- a real protocol and metadata foundation
-- a usable admin and low-level table client
-- an active implementation project with a tracked roadmap
+Important gaps still remain:
 
-Still in progress:
+- production-grade scanner abstractions
+- full snapshot batch-scan parity in the canonical real-cluster demo
+- hardened retry/reconnect behavior under failure
+- secured-cluster auth and token workflows beyond the basic hook surface
+- metrics and tracing hooks
+- full compatibility/regression coverage across more cluster scenarios
+- polished examples and final public API documentation
 
-- higher-level writer abstractions
-- higher-level scanner abstractions
-- Arrow-first row APIs
-- stronger secured-cluster support
-- broader failure-mode and E2E coverage
+## Why It Is Not Production Ready Yet
 
-## Install
+The main reasons are:
+
+- some public surfaces are still low-level compared with the upstream Java client
+- writer ergonomics have started, but retry and failure-handling behavior still need hardening
+- scanner ergonomics are not finished yet
+- real-cluster coverage is good for the current support-contract flows, but not broad enough for production confidence
+- observability and secured-environment support are still incomplete
+
+The long-lived roadmap is in [GRAND_PLAN.md](./GRAND_PLAN.md).
+
+## Quick Usage
+
+Install:
 
 ```bash
-go get github.com/chiqors/fluss-go-client
+go get github.com/chiqors/fluss-go-client@latest
 ```
 
-Common install patterns:
-
-- stable latest tag: `go get github.com/chiqors/fluss-go-client@latest`
-- pinned release: `go get github.com/chiqors/fluss-go-client@v0.1.0`
-- moving main branch: `go get github.com/chiqors/fluss-go-client@main`
-
-## Quick Start
-
-Create a root client with one or more Fluss bootstrap endpoints:
+Connect and list databases:
 
 ```go
 package main
@@ -80,48 +86,17 @@ func main() {
 	}
 	defer cli.Close()
 
-	admin := cli.Admin()
-	databases, _, err := admin.ListDatabases(ctx, false)
+	names, summaries, err := cli.Admin().ListDatabases(ctx, true)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Printf("databases: %d", len(databases))
+	log.Printf("database names: %v", names)
+	log.Printf("database summaries: %v", summaries)
 }
 ```
 
-## Usage
-
-### Connect
-
-```go
-ctx := context.Background()
-cli, err := client.Dial(ctx, client.Config{
-	Endpoints: []string{"127.0.0.1:9123"},
-})
-if err != nil {
-	log.Fatal(err)
-}
-defer cli.Close()
-```
-
-### Admin operations
-
-```go
-admin := cli.Admin()
-
-exists, err := admin.TableExists(ctx, client.TablePath{
-	DatabaseName: "fluss",
-	TableName:    "orders",
-})
-if err != nil {
-	log.Fatal(err)
-}
-
-_ = exists
-```
-
-### Table metadata
+Get table metadata:
 
 ```go
 table := cli.Table(client.TablePath{
@@ -142,34 +117,16 @@ if err != nil {
 _, _ = info, schema
 ```
 
-### Raw data-plane operations
+## Developer Quick Guide
 
-The current data-plane API is still low-level. Read and write methods mostly work with Fluss wire-format record-batch bytes rather than decoded row objects.
+Useful docs:
 
-That means this SDK is already useful for protocol work, integration work, and service foundations, but it is still growing toward more ergonomic application-facing APIs.
-
-## Local Demo
-
-A real containerized smoke-test environment is available under [demo/fluss-paimon](./demo/fluss-paimon).
-
-It boots:
-
-- Fluss coordinator and tablet server
-- Flink/Paimon tiering components
-- SQL bootstrap for the E2E tables
-- a containerized Go E2E checker
-
-Start it with:
-
-```bash
-docker compose -f demo/fluss-paimon/docker-compose.yml up --build --abort-on-container-exit go-e2e
-```
-
-See [demo/fluss-paimon/README.md](./demo/fluss-paimon/README.md) for details.
-
-The demo is the canonical real-cluster support-contract check for overlapping Go SDK behaviors, using the upstream Java client semantics as the reference and adapting them to the Go-native public API.
-
-## Development
+- [GRAND_PLAN.md](./GRAND_PLAN.md): roadmap and project memory
+- [CLIENT_SUPPORT_MATRIX.md](./CLIENT_SUPPORT_MATRIX.md): current support status
+- [AGENTS.md](./AGENTS.md): repo working rules
+- [CONTRIBUTING.md](./CONTRIBUTING.md): contribution workflow
+- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md): current architecture
+- [demo/fluss-paimon/README.md](./demo/fluss-paimon/README.md): real-cluster demo contract
 
 Useful local checks:
 
@@ -179,26 +136,27 @@ go test ./...
 go build ./...
 ```
 
-Project docs:
+If you touch the Fluss + Paimon demo:
 
-- [GRAND_PLAN.md](./GRAND_PLAN.md): roadmap and progress memory
-- [AGENTS.md](./AGENTS.md): repo working rules
-- [CONTRIBUTING.md](./CONTRIBUTING.md): contribution workflow
-- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md): current architecture
+```bash
+docker compose -f demo/fluss-paimon/docker-compose.yml config
+docker compose -f demo/fluss-paimon/docker-compose.yml up --build --abort-on-container-exit go-e2e
+docker compose -f demo/fluss-paimon/docker-compose.yml down -v
+```
 
-## Compatibility
+The upstream Java client at `/Users/administrator/Documents/Labs/fluss/fluss-client` is the behavioral reference for overlapping semantics. This repo keeps the public API Go-native while using upstream Java behavior and Fluss protocol definitions as the source of truth.
 
-- Target Fluss compatibility: `0.9.x`
-- Module path: `github.com/chiqors/fluss-go-client`
+## Contributing
 
-Compatibility beyond `0.9.x` is not promised yet.
+Contributions are welcome.
 
-## Versioning
+Please read [CONTRIBUTING.md](./CONTRIBUTING.md) first, and keep these expectations in mind:
 
-This repository should publish tagged semantic versions for Go consumers.
+- preserve Go-native public APIs
+- use the upstream Java client as a behavioral reference, not as a package-structure template
+- update docs and [GRAND_PLAN.md](./GRAND_PLAN.md) when meaningful progress or blockers change
+- verify changes with tests proportional to risk
 
-- first public release: `v0.1.0`
-- pre-`v1` releases may still refine the API surface
-- breaking API changes before `v1.0.0` should still be called out clearly in release notes and docs
+## License
 
-For `go get`, users should prefer tagged versions over floating commits once releases are published.
+This repository is licensed under the Apache License 2.0. See [LICENSE](./LICENSE).
