@@ -48,6 +48,42 @@ type PartitionInfo struct {
 	RemoteDataDir string
 }
 
+type SnapshotFile struct {
+	RemotePath    string
+	LocalFileName string
+}
+
+type KvSnapshots struct {
+	TableID     int64
+	PartitionID *int64
+	SnapshotIDs map[int32]*int64
+	LogOffsets  map[int32]*int64
+}
+
+type KvSnapshotMetadata struct {
+	LogOffset     int64
+	SnapshotFiles []SnapshotFile
+}
+
+type SnapshotScanOptions struct {
+	PartitionName *string
+	PartitionID   *int64
+	BucketID      int32
+	SnapshotID    *int64
+}
+
+type LakeSnapshotBucket struct {
+	PartitionID *int64
+	BucketID    int32
+	LogOffset   int64
+}
+
+type LakeSnapshot struct {
+	TableID    int64
+	SnapshotID int64
+	Buckets    []LakeSnapshotBucket
+}
+
 type BucketRecordBatch struct {
 	PartitionID *int64
 	BucketID    int32

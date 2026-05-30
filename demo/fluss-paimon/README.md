@@ -79,6 +79,8 @@ For overlapping features, the behavioral reference is the upstream Java client a
 
 The primary-key coverage is now exercised on Fluss `COMPACTED` KV tables, so the demo proves the Go SDK against the upstream Java-aligned compacted row/key semantics rather than only against the older indexed-row assumptions.
 
+The repo still includes upstream-aligned snapshot admin metadata work and exploratory snapshot batch-scan code, but snapshot scan is intentionally not part of the canonical demo right now. Real-cluster validation showed that the local snapshot-file reader path needs a cleaner portability strategy before it belongs in the support-contract E2E.
+
 The demo also proves that these Go SDK operations succeed against a real Fluss deployment configured with Paimon-backed lakehouse infrastructure. It does not claim extra lake-specific Go APIs beyond the operations it actually executes.
 
 ## Endpoints

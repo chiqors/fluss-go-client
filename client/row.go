@@ -3,11 +3,13 @@ package client
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	arrowcodec "github.com/chiqors/fluss-go-client/internal/codec/arrow"
 	rowcodec "github.com/chiqors/fluss-go-client/internal/codec/row"
 	"github.com/chiqors/fluss-go-client/internal/metadata"
+	"github.com/chiqors/fluss-go-client/internal/snapshot"
 )
 
 // AppendIndexedRow encodes a single row using the indexed row layout and appends it to a log table.
@@ -419,4 +421,83 @@ func (t *TableClient) ScanRows(ctx context.Context, partitionID *int64, bucketID
 // ScanIndexedRows drains the public KV scanner and decodes all value batches into rows.
 func (t *TableClient) ScanIndexedRows(ctx context.Context, partitionID *int64, bucketID int32, limit *int64, batchSizeBytes int32, schema Schema) ([][]any, error) {
 	return t.ScanRows(ctx, partitionID, bucketID, limit, batchSizeBytes, schema)
+}
+
+// SnapshotScanRows reads a KV snapshot for the requested bucket and decodes it into public rows.
+// This mirrors the upstream Java snapshot flow: metadata RPCs, remote snapshot-file download,
+// then local snapshot DB iteration. The current implementation is intentionally scoped to the
+// S3-compatible storage used by the real Fluss+Paimon demo environment.
+func (t *TableClient) SnapshotScanRows(ctx context.Context, schema Schema, opts SnapshotScanOptions) ([][]any, error) {
+	downloader, err := snapshot.NewDownloader(snapshot.StorageConfig{
+		S3Endpoint:       t.client.cfg.SnapshotStorage.S3Endpoint,
+		S3AccessKey:      t.client.cfg.SnapshotStorage.S3AccessKey,
+		S3SecretKey:      t.client.cfg.SnapshotStorage.S3SecretKey,
+		S3Region:         t.client.cfg.SnapshotStorage.S3Region,
+		S3UseSSL:         t.client.cfg.SnapshotStorage.S3UseSSL,
+		S3PathStyle:      t.client.cfg.SnapshotStorage.S3PathStyle,
+		S3BucketOverride: t.client.cfg.SnapshotStorage.S3BucketOverride,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return t.snapshotScanRows(ctx, schema, opts, downloader.DownloadAll)
+}
+
+func (t *TableClient) snapshotScanRows(ctx context.Context, schema Schema, opts SnapshotScanOptions, download func(context.Context, []snapshot.RemoteFile) (string, error)) ([][]any, error) {
+	info, err := t.ensureTableInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	_, _, indexed, err := t.kvEncoding(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	snapshots, err := t.client.Admin().GetLatestKvSnapshots(ctx, t.path, opts.PartitionName)
+	if err != nil {
+		return nil, fmt.Errorf("fluss: snapshot scan rows: get latest kv snapshots: %w", err)
+	}
+
+	snapshotID := opts.SnapshotID
+	if snapshotID == nil {
+		snapshotID = snapshots.SnapshotIDs[opts.BucketID]
+	}
+	if snapshotID == nil {
+		return nil, fmt.Errorf("fluss: snapshot scan rows: no snapshot id available for bucket %d", opts.BucketID)
+	}
+
+	partitionID := opts.PartitionID
+	if partitionID == nil {
+		partitionID = snapshots.PartitionID
+	}
+
+	metadata, err := t.client.Admin().GetKvSnapshotMetadata(ctx, snapshots.TableID, partitionID, opts.BucketID, *snapshotID)
+	if err != nil {
+		return nil, fmt.Errorf("fluss: snapshot scan rows: get kv snapshot metadata: %w", err)
+	}
+
+	files := make([]snapshot.RemoteFile, 0, len(metadata.SnapshotFiles))
+	for _, file := range metadata.SnapshotFiles {
+		files = append(files, snapshot.RemoteFile{
+			RemotePath:    file.RemotePath,
+			LocalFileName: file.LocalFileName,
+		})
+	}
+	localDir, err := download(ctx, files)
+	if err != nil {
+		return nil, fmt.Errorf("fluss: snapshot scan rows: download snapshot files: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(localDir) }()
+
+	reader, err := snapshot.Open(localDir, map[int32]rowcodec.Schema{info.SchemaID: rowcodec.Schema(schema)}, indexed)
+	if err != nil {
+		return nil, fmt.Errorf("fluss: snapshot scan rows: open local snapshot: %w", err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	rows, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("fluss: snapshot scan rows: read local snapshot: %w", err)
+	}
+	return rows, nil
 }

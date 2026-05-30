@@ -60,6 +60,8 @@ Success means a Go team can:
 
 ### Progress Ledger
 
+- 2026-05-30: completed the first primary-key snapshot batch-scan implementation slice by adding public snapshot storage config, a MinIO-backed remote snapshot downloader, a public `TableClient.SnapshotScanRows(...)` helper, and mock/integration coverage; after real-cluster validation showed Fluss snapshot local-reader portability is still messy across Pebble/RocksDB approaches, snapshot batch scan was pulled back out of the canonical demo support contract and remains deferred pending a cleaner implementation strategy.
+- 2026-05-30: started the primary-key snapshot batch-scan vertical slice by adding upstream-aligned KV snapshot admin metadata support in the Go proto/client layer (`GetLatestKvSnapshots`, `GetKvSnapshotMetadata`, `GetLakeSnapshot`) with local integration coverage; the remote snapshot-file scanner still remains to be implemented before snapshot batch scan can be claimed in the support matrix.
 - 2026-05-30: corrected compacted row/key wire semantics to follow the upstream Java client more closely for primary-key flows, including Fluss-style compacted signed varints plus compacted length-prefixed string/bytes decoding and targeted compacted PK row tests.
 - 2026-05-30: taught the Go Arrow append path to honor Fluss table Arrow compression properties, including the default `ZSTD` setting, so the dedicated projection demo table can move back onto the normal default-compression path.
 - 2026-05-30: added the first Fluss-specific Arrow log batch path in Go, including public Arrow append/decode helpers, mock integration coverage, a dedicated `ARROW` demo table, and real-cluster E2E intent for projection-backed log fetch semantics.
@@ -86,7 +88,7 @@ Success means a Go team can:
 - [x] Basic pluggable auth interface
 - [x] Metadata cache and leader routing foundation
 - [x] Admin metadata calls for databases, tables, schema, and partitions
-- [x] Raw table operations for append, upsert, delete, lookup, prefix lookup, fetch log, limit scan, and KV scan
+- [x] Raw table operations for append, upsert, delete, lookup, prefix lookup, fetch log, limit scan, KV scan, and demo-first KV snapshot scan
 - [x] Demo E2E now exercises append, delete, limit scan, KV lookup, and prefix lookup round-trips against a real cluster
 - [x] Unit and mock-style integration coverage for the current client surface
 - [x] Containerized Fluss/Paimon smoke-test demo at [demo/fluss-paimon/README.md](./demo/fluss-paimon/README.md)
@@ -146,7 +148,7 @@ This Go client should pursue parity in layers rather than trying to clone every 
 ### Parity strategy
 
 - [x] Foundation: protocol, transport, metadata, basic admin
-- [~] Raw table data operations: broad public coverage now exists for admin, log, lookup, delete, projection, and KV limit-scan flows, but higher-level writer/scanner ergonomics and true snapshot-batch parity are still pending
+- [~] Raw table data operations: broad public coverage now exists for admin, log, lookup, delete, projection, KV limit-scan, and demo-first KV snapshot-scan flows, but higher-level writer/scanner ergonomics and proven real-cluster snapshot parity are still pending
 - [ ] Writer subsystem parity
 - [ ] Scanner subsystem parity
 - [x] Lookup ergonomics parity

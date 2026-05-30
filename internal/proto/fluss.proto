@@ -43,6 +43,9 @@ enum ApiKey {
   PutKV = 1016;
   Lookup = 1017;
   ListOffsets = 1021;
+  GetLatestKvSnapshots = 1023;
+  GetKvSnapshotMetadata = 1024;
+  GetLakeSnapshot = 1032;
   InitWriter = 1026;
   LimitScan = 1033;
   PrefixLookup = 1034;
@@ -419,6 +422,41 @@ message LimitScanResponse{
   optional bytes records = 4;
 }
 
+message GetLatestKvSnapshotsRequest {
+  required PbTablePath table_path = 1;
+  optional string partition_name = 2;
+}
+
+message GetLatestKvSnapshotsResponse {
+  required int64 table_id = 1;
+  optional int64 partition_id = 2;
+  repeated PbKvSnapshot latest_snapshots = 3;
+}
+
+message GetKvSnapshotMetadataRequest {
+  required int64 table_id = 1;
+  optional int64 partition_id = 2;
+  required int32 bucket_id = 3;
+  required int64 snapshot_id = 4;
+}
+
+message GetKvSnapshotMetadataResponse {
+  required int64 log_offset = 1;
+  repeated PbRemotePathAndLocalFile snapshot_files = 2;
+}
+
+message GetLakeSnapshotRequest {
+  required PbTablePath table_path = 1;
+  optional int64 snapshot_id = 2;
+  optional bool readable = 3;
+}
+
+message GetLakeSnapshotResponse {
+  required int64 table_id = 1;
+  required int64 snapshotId = 2;
+  repeated PbLakeSnapshotForBucket bucket_snapshots = 3;
+}
+
 message PbScanReqForBucket {
   required int64 table_id = 1;
   optional int64 partition_id = 2;
@@ -449,6 +487,23 @@ message InitWriterRequest {
 
 message InitWriterResponse {
   required int64 writer_id = 1;
+}
+
+message PbKvSnapshot {
+  required int32 bucket_id = 1;
+  optional int64 snapshot_id = 2;
+  optional int64 log_offset = 3;
+}
+
+message PbRemotePathAndLocalFile {
+  required string remote_path = 1;
+  required string local_file_name = 2;
+}
+
+message PbLakeSnapshotForBucket {
+  optional int64 partition_id = 1;
+  required int32 bucket_id = 2;
+  required int64 log_offset = 3;
 }
 
 message AuthenticateRequest {

@@ -270,6 +270,140 @@ func (a *AdminClient) ListPartitionInfos(ctx context.Context, path TablePath) ([
 	return out, nil
 }
 
+func (a *AdminClient) GetLatestKvSnapshots(ctx context.Context, path TablePath, partitionName *string) (KvSnapshots, error) {
+	resp, err := a.invokeAny(ctx, flusspb.ApiKey_GetLatestKvSnapshots, "GetLatestKvSnapshotsRequest", "GetLatestKvSnapshotsResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.GetLatestKvSnapshotsRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected get latest kv snapshots request type %T", msg)
+		}
+		req.TablePath = buildTablePath(path)
+		if partitionName != nil {
+			req.PartitionName = proto.String(*partitionName)
+		}
+		return nil
+	})
+	if err != nil {
+		return KvSnapshots{}, err
+	}
+	r, ok := resp.(*flusspb.GetLatestKvSnapshotsResponse)
+	if !ok {
+		return KvSnapshots{}, fmt.Errorf("fluss: unexpected get latest kv snapshots response type %T", resp)
+	}
+	out := KvSnapshots{
+		TableID:     r.GetTableId(),
+		SnapshotIDs: make(map[int32]*int64, len(r.GetLatestSnapshots())),
+		LogOffsets:  make(map[int32]*int64, len(r.GetLatestSnapshots())),
+	}
+	if r.PartitionId != nil {
+		partitionID := r.GetPartitionId()
+		out.PartitionID = &partitionID
+	}
+	for _, snapshot := range r.GetLatestSnapshots() {
+		bucketID := snapshot.GetBucketId()
+		if snapshot.SnapshotId != nil {
+			snapshotID := snapshot.GetSnapshotId()
+			out.SnapshotIDs[bucketID] = &snapshotID
+		} else {
+			out.SnapshotIDs[bucketID] = nil
+		}
+		if snapshot.LogOffset != nil {
+			logOffset := snapshot.GetLogOffset()
+			out.LogOffsets[bucketID] = &logOffset
+		} else {
+			out.LogOffsets[bucketID] = nil
+		}
+	}
+	return out, nil
+}
+
+func (a *AdminClient) GetKvSnapshotMetadata(ctx context.Context, tableID int64, partitionID *int64, bucketID int32, snapshotID int64) (KvSnapshotMetadata, error) {
+	resp, err := a.invokeAny(ctx, flusspb.ApiKey_GetKvSnapshotMetadata, "GetKvSnapshotMetadataRequest", "GetKvSnapshotMetadataResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.GetKvSnapshotMetadataRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected get kv snapshot metadata request type %T", msg)
+		}
+		req.TableId = proto.Int64(tableID)
+		if partitionID != nil {
+			req.PartitionId = proto.Int64(*partitionID)
+		}
+		req.BucketId = proto.Int32(bucketID)
+		req.SnapshotId = proto.Int64(snapshotID)
+		return nil
+	})
+	if err != nil {
+		return KvSnapshotMetadata{}, err
+	}
+	r, ok := resp.(*flusspb.GetKvSnapshotMetadataResponse)
+	if !ok {
+		return KvSnapshotMetadata{}, fmt.Errorf("fluss: unexpected get kv snapshot metadata response type %T", resp)
+	}
+	out := KvSnapshotMetadata{
+		LogOffset:     r.GetLogOffset(),
+		SnapshotFiles: make([]SnapshotFile, 0, len(r.GetSnapshotFiles())),
+	}
+	for _, file := range r.GetSnapshotFiles() {
+		out.SnapshotFiles = append(out.SnapshotFiles, SnapshotFile{
+			RemotePath:    file.GetRemotePath(),
+			LocalFileName: file.GetLocalFileName(),
+		})
+	}
+	return out, nil
+}
+
+func (a *AdminClient) GetLatestLakeSnapshot(ctx context.Context, path TablePath) (LakeSnapshot, error) {
+	return a.getLakeSnapshot(ctx, path, nil, nil)
+}
+
+func (a *AdminClient) GetLakeSnapshot(ctx context.Context, path TablePath, snapshotID int64) (LakeSnapshot, error) {
+	return a.getLakeSnapshot(ctx, path, &snapshotID, nil)
+}
+
+func (a *AdminClient) GetReadableLakeSnapshot(ctx context.Context, path TablePath) (LakeSnapshot, error) {
+	readable := true
+	return a.getLakeSnapshot(ctx, path, nil, &readable)
+}
+
+func (a *AdminClient) getLakeSnapshot(ctx context.Context, path TablePath, snapshotID *int64, readable *bool) (LakeSnapshot, error) {
+	resp, err := a.invokeAny(ctx, flusspb.ApiKey_GetLakeSnapshot, "GetLakeSnapshotRequest", "GetLakeSnapshotResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.GetLakeSnapshotRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected get lake snapshot request type %T", msg)
+		}
+		req.TablePath = buildTablePath(path)
+		if snapshotID != nil {
+			req.SnapshotId = proto.Int64(*snapshotID)
+		}
+		if readable != nil {
+			req.Readable = proto.Bool(*readable)
+		}
+		return nil
+	})
+	if err != nil {
+		return LakeSnapshot{}, err
+	}
+	r, ok := resp.(*flusspb.GetLakeSnapshotResponse)
+	if !ok {
+		return LakeSnapshot{}, fmt.Errorf("fluss: unexpected get lake snapshot response type %T", resp)
+	}
+	out := LakeSnapshot{
+		TableID:    r.GetTableId(),
+		SnapshotID: r.GetSnapshotId(),
+		Buckets:    make([]LakeSnapshotBucket, 0, len(r.GetBucketSnapshots())),
+	}
+	for _, bucket := range r.GetBucketSnapshots() {
+		item := LakeSnapshotBucket{
+			BucketID:  bucket.GetBucketId(),
+			LogOffset: bucket.GetLogOffset(),
+		}
+		if bucket.PartitionId != nil {
+			partitionID := bucket.GetPartitionId()
+			item.PartitionID = &partitionID
+		}
+		out.Buckets = append(out.Buckets, item)
+	}
+	return out, nil
+}
+
 func (a *AdminClient) invokeAny(ctx context.Context, api flusspb.ApiKey, reqName, respName string, build func(proto.Message) error) (proto.Message, error) {
 	addr := a.client.endpoints[0]
 	if coordinator, ok := a.client.metadata.Coordinator(); ok {

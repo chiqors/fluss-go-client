@@ -91,6 +91,18 @@ func New(name string) (proto.Message, error) {
 		return &flusspb.FetchLogRequest{}, nil
 	case "FetchLogResponse":
 		return &flusspb.FetchLogResponse{}, nil
+	case "GetLatestKvSnapshotsRequest":
+		return &flusspb.GetLatestKvSnapshotsRequest{}, nil
+	case "GetLatestKvSnapshotsResponse":
+		return &flusspb.GetLatestKvSnapshotsResponse{}, nil
+	case "GetKvSnapshotMetadataRequest":
+		return &flusspb.GetKvSnapshotMetadataRequest{}, nil
+	case "GetKvSnapshotMetadataResponse":
+		return &flusspb.GetKvSnapshotMetadataResponse{}, nil
+	case "GetLakeSnapshotRequest":
+		return &flusspb.GetLakeSnapshotRequest{}, nil
+	case "GetLakeSnapshotResponse":
+		return &flusspb.GetLakeSnapshotResponse{}, nil
 	case "LimitScanRequest":
 		return &flusspb.LimitScanRequest{}, nil
 	case "LimitScanResponse":
