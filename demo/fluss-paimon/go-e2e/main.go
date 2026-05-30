@@ -73,32 +73,50 @@ func main() {
 
 	logSchema := data.NewSchema(data.Int64Type(), data.Int32Type(), data.Float64Type(), data.StringType())
 	logFields := []string{"order_id", "customer_id", "amount", "status"}
-	logRow, err := data.NewRow(logSchema, int64(1001), int32(42), 19.95, "created")
-	if err != nil {
-		fatalf("build log row: %v", err)
+	logRows := []data.Row{}
+	for _, values := range [][]any{
+		{int64(1001), int32(42), 19.95, "created"},
+		{int64(1002), int32(43), 29.50, "confirmed"},
+	} {
+		row, err := data.NewRow(logSchema, values...)
+		if err != nil {
+			fatalf("build log row: %v", err)
+		}
+		logRows = append(logRows, row)
 	}
-	appendResult, err := cli.Table(logPath).AppendIndexedRow(ctx, 0, logRow)
-	if err != nil {
-		fatalf("append log row: %v", err)
+	for i, row := range logRows {
+		appendResult, err := cli.Table(logPath).AppendIndexedRow(ctx, 0, row)
+		if err != nil {
+			fatalf("append log row %d: %v", i, err)
+		}
+		if len(appendResult) != 1 {
+			fatalf("append log result %d: unexpected result count %d", i, len(appendResult))
+		}
+		fmt.Printf("AppendLog[%d]: bucket=%d base_offset=%d\n", i, appendResult[0].BucketID, appendResult[0].BaseOffset)
 	}
-	if len(appendResult) != 1 {
-		fatalf("append log result: unexpected result count %d", len(appendResult))
-	}
-	fmt.Printf("AppendLog: bucket=%d base_offset=%d\n", appendResult[0].BucketID, appendResult[0].BaseOffset)
 
 	kvSchema := data.NewSchema(data.Int64Type(), data.StringType(), data.StringType())
-	kvRow, err := data.NewRow(kvSchema, int64(42), "Ada Lovelace", "gold")
-	if err != nil {
-		fatalf("build kv row: %v", err)
+	kvRows := []data.Row{}
+	for _, values := range [][]any{
+		{int64(42), "Ada Lovelace", "gold"},
+		{int64(43), "Grace Hopper", "platinum"},
+	} {
+		row, err := data.NewRow(kvSchema, values...)
+		if err != nil {
+			fatalf("build kv row: %v", err)
+		}
+		kvRows = append(kvRows, row)
 	}
-	putResult, err := cli.Table(kvPath).UpsertIndexedRow(ctx, 0, kvRow, []int32{0, 1, 2})
-	if err != nil {
-		fatalf("upsert kv row: %v", err)
+	for i, row := range kvRows {
+		putResult, err := cli.Table(kvPath).UpsertIndexedRow(ctx, 0, row, []int32{0, 1, 2})
+		if err != nil {
+			fatalf("upsert kv row %d: %v", i, err)
+		}
+		if len(putResult) != 1 {
+			fatalf("upsert kv result %d: unexpected result count %d", i, len(putResult))
+		}
+		fmt.Printf("UpsertKV[%d]: bucket=%d log_end_offset=%d\n", i, putResult[0].BucketID, putResult[0].LogEndOffset)
 	}
-	if len(putResult) != 1 {
-		fatalf("upsert kv result: unexpected result count %d", len(putResult))
-	}
-	fmt.Printf("UpsertKV: bucket=%d log_end_offset=%d\n", putResult[0].BucketID, putResult[0].LogEndOffset)
 
 	// LimitScan should now have real payload
 	limitResult, err := cli.Table(logPath).LimitScan(ctx, nil, 0, 10)
@@ -107,38 +125,47 @@ func main() {
 	}
 	fmt.Printf("LimitScan IsLogTable=%v Records=%d bytes\n", limitResult.IsLogTable, len(limitResult.Records))
 
-	decodedLog, err := client.DecodeIndexedLogBatchPayload(logSchema, limitResult.Records)
+	decodedLogs, err := data.DecodeLogRecordBatchRows(logSchema, limitResult.Records)
 	if err != nil {
 		fatalf("decode log scan: %v", err)
 	}
-	fmt.Printf("LimitScan Row: %s\n", formatRow(logFields, decodedLog))
+	if len(decodedLogs) < len(logRows) {
+		fatalf("limit scan: got %d rows, want at least %d", len(decodedLogs), len(logRows))
+	}
+	for i, row := range decodedLogs[:len(logRows)] {
+		expected := logRows[i].Values
+		if !rowsEqual(row, expected) {
+			fatalf("limit scan row %d: got %v, want %v", i, row, expected)
+		}
+		fmt.Printf("LimitScan Row[%d]: %s\n", i, formatRow(logFields, row))
+	}
 
 	// Verify the KV write with a supported lookup path on this server branch.
-	keyBytes, err := kvRow.EncodeLookupKey(0)
-	if err != nil {
-		fatalf("encode kv lookup key: %v", err)
+	lookupReq := client.LookupBucketRequest{BucketID: 0}
+	for _, row := range kvRows {
+		keyBytes, err := row.EncodeLookupKey(0)
+		if err != nil {
+			fatalf("encode kv lookup key: %v", err)
+		}
+		lookupReq.Keys = append(lookupReq.Keys, keyBytes)
 	}
-	lookupResult, err := cli.Table(kvPath).Lookup(ctx, []client.LookupBucketRequest{{BucketID: 0, Keys: [][]byte{keyBytes}}}, nil, nil, nil)
+	lookupResult, err := cli.Table(kvPath).Lookup(ctx, []client.LookupBucketRequest{lookupReq}, nil, nil, nil)
 	if err != nil {
 		fatalf("kv lookup: %v", err)
 	}
-	if len(lookupResult) != 1 || len(lookupResult[0].Values) != 1 {
+	if len(lookupResult) != 1 || len(lookupResult[0].Values) != len(kvRows) {
 		fatalf("kv lookup: unexpected result %#v", lookupResult)
 	}
-	decodedKV, err := client.DecodeIndexedLookupValuePayload(kvSchema, lookupResult[0].Values[0])
-	if err != nil {
-		fatalf("decode kv lookup: %v", err)
-	}
-	expectedKV := []any{int64(42), "Ada Lovelace", "gold"}
-	if len(decodedKV) != len(expectedKV) {
-		fatalf("kv lookup: unexpected decoded row length %d, want %d", len(decodedKV), len(expectedKV))
-	}
-	for i := range expectedKV {
-		if decodedKV[i] != expectedKV[i] {
-			fatalf("kv lookup: field %d = %v, want %v", i, decodedKV[i], expectedKV[i])
+	for i, payload := range lookupResult[0].Values {
+		decodedKV, err := client.DecodeIndexedLookupValuePayload(kvSchema, payload)
+		if err != nil {
+			fatalf("decode kv lookup %d: %v", i, err)
 		}
+		if !rowsEqual(decodedKV, kvRows[i].Values) {
+			fatalf("kv lookup row %d: got %v, want %v", i, decodedKV, kvRows[i].Values)
+		}
+		fmt.Printf("LookupKV Row[%d]: %s\n", i, formatRow([]string{"customer_id", "customer_name", "customer_tier"}, decodedKV))
 	}
-	fmt.Printf("LookupKV Row: %s\n", formatRow([]string{"customer_id", "customer_name", "customer_tier"}, decodedKV))
 
 	fmt.Printf("\n=== E2E Complete ===\n")
 }
@@ -191,6 +218,18 @@ func waitForTables(ctx context.Context, admin *client.AdminClient, database stri
 func fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, format+"\n", args...)
 	os.Exit(1)
+}
+
+func rowsEqual(got, want []any) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func formatRow(fields []string, values []any) string {

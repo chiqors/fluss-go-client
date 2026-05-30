@@ -91,6 +91,23 @@ func DecodeLogRecordBatch(schema Schema, payload []byte) ([]any, error) {
 	return decodeLogRecord(schema, recordPayload)
 }
 
+func DecodeLogRecordBatchRows(schema Schema, payload []byte) ([][]any, error) {
+	rows := make([][]any, 0)
+	for len(payload) > 0 {
+		batchSize, recordPayload, err := decodeLogBatch(payload)
+		if err != nil {
+			return nil, err
+		}
+		decoded, err := decodeLogRecords(schema, recordPayload)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, decoded...)
+		payload = payload[batchSize:]
+	}
+	return rows, nil
+}
+
 func DecodeKvRecordBatch(schema Schema, payload []byte) ([]any, error) {
 	_, recordPayload, err := decodeKvBatch(payload)
 	if err != nil {
@@ -147,17 +164,38 @@ func encodeLogRecord(schema Schema, values []any, indexed bool) ([]byte, error) 
 }
 
 func decodeLogRecord(schema Schema, payload []byte) ([]any, error) {
-	if len(payload) < 5 {
-		return nil, fmt.Errorf("data: log record payload too short")
+	rows, err := decodeLogRecords(schema, payload)
+	if err != nil {
+		return nil, err
 	}
-	declared := int(binary.LittleEndian.Uint32(payload[:4]))
-	if declared+4 > len(payload) {
-		return nil, fmt.Errorf("data: log record payload truncated")
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("data: log record payload empty")
 	}
-	if payload[4] != 0 {
-		return nil, fmt.Errorf("data: unsupported log record attributes %d", payload[4])
+	return rows[0], nil
+}
+
+func decodeLogRecords(schema Schema, payload []byte) ([][]any, error) {
+	rows := make([][]any, 0, 1)
+	for off := 0; off < len(payload); {
+		if off+5 > len(payload) {
+			return nil, fmt.Errorf("data: log record payload truncated")
+		}
+		declared := int(binary.LittleEndian.Uint32(payload[off : off+4]))
+		recordEnd := off + 4 + declared
+		if recordEnd > len(payload) {
+			return nil, fmt.Errorf("data: log record payload truncated")
+		}
+		if payload[off+4] != 0 {
+			return nil, fmt.Errorf("data: unsupported log record attributes %d", payload[off+4])
+		}
+		row, err := decodeRow(schema, payload[off+5:recordEnd], true)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, row)
+		off = recordEnd
 	}
-	return decodeRow(schema, payload[5:4+declared], true)
+	return rows, nil
 }
 
 func encodeKvRecord(schema Schema, values []any, indexed bool) ([]byte, error) {
@@ -370,19 +408,24 @@ func DecodeCompacted(schema Schema, payload []byte) ([]any, error) {
 	return decodeRow(schema, payload, false)
 }
 
-func decodeLogBatch(payload []byte) (int32, []byte, error) {
+func decodeLogBatch(payload []byte) (int, []byte, error) {
 	if len(payload) < logHeaderSize {
 		return 0, nil, fmt.Errorf("data: log batch payload too short")
 	}
 	if payload[12] != logMagicV0 {
 		return 0, nil, fmt.Errorf("data: unsupported log batch magic %d", payload[12])
 	}
-	crc := binary.LittleEndian.Uint32(payload[21:25])
-	check := crc32.Checksum(payload[25:], crc32.MakeTable(crc32.Castagnoli))
+	batchSize := int(binary.LittleEndian.Uint32(payload[8:12])) + 12
+	if batchSize > len(payload) {
+		return 0, nil, fmt.Errorf("data: log batch payload truncated")
+	}
+	batch := payload[:batchSize]
+	crc := binary.LittleEndian.Uint32(batch[21:25])
+	check := crc32.Checksum(batch[25:], crc32.MakeTable(crc32.Castagnoli))
 	if crc != check {
 		return 0, nil, fmt.Errorf("data: invalid log batch crc")
 	}
-	return int32(binary.LittleEndian.Uint16(payload[17:19])), payload[logHeaderSize:], nil
+	return batchSize, batch[logHeaderSize:], nil
 }
 
 func decodeKvBatch(payload []byte) (int32, []byte, error) {
