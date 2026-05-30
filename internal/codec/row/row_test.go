@@ -23,7 +23,7 @@ func TestEncodeLookupKeyUsesCompactedEncoding(t *testing.T) {
 
 	want := []byte{
 		42,
-		12, 0, 0, 0,
+		12,
 		'A', 'd', 'a', ' ', 'L', 'o', 'v', 'e', 'l', 'a', 'c', 'e',
 	}
 
@@ -114,6 +114,54 @@ func TestCompactedRoundTripScalarsAndTemporal(t *testing.T) {
 	assertValuesEqual(t, got, values)
 }
 
+func TestCompactedRoundTripWithStrings(t *testing.T) {
+	schema := NewSchema(
+		Int64Type(),
+		StringType(),
+		StringType(),
+	)
+	values := []any{
+		int64(42),
+		"Ada Lovelace",
+		"gold",
+	}
+
+	payload, err := encodeRow(schema, values, false)
+	if err != nil {
+		t.Fatalf("encodeRow(compacted strings) error = %v", err)
+	}
+	got, err := DecodeCompacted(schema, payload)
+	if err != nil {
+		t.Fatalf("DecodeCompacted(strings) error = %v", err)
+	}
+
+	assertValuesEqual(t, got, values)
+}
+
+func TestCompactedRoundTripWithNullVariableField(t *testing.T) {
+	schema := NewSchema(
+		Int64Type(),
+		StringType(),
+		StringType(),
+	)
+	values := []any{
+		int64(42),
+		nil,
+		"diamond",
+	}
+
+	payload, err := encodeRow(schema, values, false)
+	if err != nil {
+		t.Fatalf("encodeRow(compacted null variable) error = %v", err)
+	}
+	got, err := DecodeCompacted(schema, payload)
+	if err != nil {
+		t.Fatalf("DecodeCompacted(null variable) error = %v", err)
+	}
+
+	assertValuesEqual(t, got, values)
+}
+
 func TestIndexedRoundTripCompositeTypes(t *testing.T) {
 	schema := NewSchema(
 		ArrayType(Int32Type()),
@@ -133,6 +181,30 @@ func TestIndexedRoundTripCompositeTypes(t *testing.T) {
 	got, err := DecodeIndexed(schema, payload)
 	if err != nil {
 		t.Fatalf("DecodeIndexed(composite) error = %v", err)
+	}
+
+	assertValuesEqual(t, got, values)
+}
+
+func TestIndexedRoundTripWithNullVariableField(t *testing.T) {
+	schema := NewSchema(
+		Int64Type(),
+		StringType(),
+		StringType(),
+	)
+	values := []any{
+		int64(42),
+		nil,
+		"diamond",
+	}
+
+	payload, err := encodeRow(schema, values, true)
+	if err != nil {
+		t.Fatalf("encodeRow(indexed null variable) error = %v", err)
+	}
+	got, err := DecodeIndexed(schema, payload)
+	if err != nil {
+		t.Fatalf("DecodeIndexed(null variable) error = %v", err)
 	}
 
 	assertValuesEqual(t, got, values)
@@ -198,9 +270,67 @@ func TestDecodeValueRecordBatchRows(t *testing.T) {
 	batch = binary.LittleEndian.AppendUint32(batch, 2)
 	batch = append(batch, valueRecords...)
 
-	got, err := DecodeValueRecordBatchRows(schema, batch)
+	got, err := DecodeValueRecordBatchRows(schema, batch, true)
 	if err != nil {
 		t.Fatalf("DecodeValueRecordBatchRows() error = %v", err)
+	}
+	want := [][]any{row1.Values, row2.Values}
+	if len(got) != len(want) {
+		t.Fatalf("row count = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		assertValuesEqual(t, got[i], want[i])
+	}
+}
+
+func TestDecodeCompactedValueRecordBatchRows(t *testing.T) {
+	schema := NewSchema(Int64Type(), StringType(), StringType())
+
+	row1, err := NewRow(schema, int64(42), "Ada Lovelace", "gold")
+	if err != nil {
+		t.Fatalf("NewRow(row1) error = %v", err)
+	}
+	row2, err := NewRow(schema, int64(43), "Grace Hopper", "platinum")
+	if err != nil {
+		t.Fatalf("NewRow(row2) error = %v", err)
+	}
+
+	kv1, err := EncodeKvRecordBatch(schema, row1.Values, KvBatchOptions{SchemaID: 1, Indexed: false, KeyColumns: []int{0}})
+	if err != nil {
+		t.Fatalf("EncodeKvRecordBatch(row1) error = %v", err)
+	}
+	kv2, err := EncodeKvRecordBatch(schema, row2.Values, KvBatchOptions{SchemaID: 1, Indexed: false, KeyColumns: []int{0}})
+	if err != nil {
+		t.Fatalf("EncodeKvRecordBatch(row2) error = %v", err)
+	}
+
+	buildValueRecord := func(kvPayload []byte) []byte {
+		_, recordPayload, err := decodeKvBatch(kvPayload)
+		if err != nil {
+			t.Fatalf("decodeKvBatch() error = %v", err)
+		}
+		keyLen, n := binary.Uvarint(recordPayload[4:])
+		if n <= 0 {
+			t.Fatalf("invalid key length varint")
+		}
+		rowPayload := recordPayload[4+n+int(keyLen):]
+		out := make([]byte, 0, 4+2+len(rowPayload))
+		out = binary.LittleEndian.AppendUint32(out, uint32(2+len(rowPayload)))
+		out = binary.LittleEndian.AppendUint16(out, 1)
+		out = append(out, rowPayload...)
+		return out
+	}
+
+	valueRecords := append(buildValueRecord(kv1), buildValueRecord(kv2)...)
+	batch := make([]byte, 0, 9+len(valueRecords))
+	batch = binary.LittleEndian.AppendUint32(batch, uint32(5+len(valueRecords)))
+	batch = append(batch, 0)
+	batch = binary.LittleEndian.AppendUint32(batch, 2)
+	batch = append(batch, valueRecords...)
+
+	got, err := DecodeValueRecordBatchRows(schema, batch, false)
+	if err != nil {
+		t.Fatalf("DecodeValueRecordBatchRows(compacted) error = %v", err)
 	}
 	want := [][]any{row1.Values, row2.Values}
 	if len(got) != len(want) {

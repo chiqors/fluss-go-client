@@ -35,7 +35,7 @@ CREATE TABLE e2e_customers (
   PRIMARY KEY (customer_id) NOT ENFORCED
 ) WITH (
   'bucket.num' = '1',
-  'table.kv.format' = 'indexed',
+  'table.kv.format' = 'compacted',
   'table.kv.format-version' = '2'
 );
 
@@ -48,7 +48,7 @@ CREATE TABLE e2e_customer_orders (
 ) WITH (
   'bucket.num' = '1',
   'bucket.key' = 'customer_id,customer_name',
-  'table.kv.format' = 'indexed',
+  'table.kv.format' = 'compacted',
   'table.kv.format-version' = '2'
 );
 

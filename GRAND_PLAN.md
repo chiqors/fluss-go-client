@@ -60,11 +60,13 @@ Success means a Go team can:
 
 ### Progress Ledger
 
+- 2026-05-30: corrected compacted row/key wire semantics to follow the upstream Java client more closely for primary-key flows, including Fluss-style compacted signed varints plus compacted length-prefixed string/bytes decoding and targeted compacted PK row tests.
 - 2026-05-30: taught the Go Arrow append path to honor Fluss table Arrow compression properties, including the default `ZSTD` setting, so the dedicated projection demo table can move back onto the normal default-compression path.
 - 2026-05-30: added the first Fluss-specific Arrow log batch path in Go, including public Arrow append/decode helpers, mock integration coverage, a dedicated `ARROW` demo table, and real-cluster E2E intent for projection-backed log fetch semantics.
 - 2026-05-30: added projection-aware public log fetch options and request-level test coverage; discovered via real-cluster validation that Fluss only supports column projection for `ARROW` log format, so the `INDEXED`-table demo and support matrix were narrowed back to partial support.
 - 2026-05-30: promoted primary-key limit scan into a decoded public data operation with shared limit-scan row helpers and real-cluster E2E coverage, moving another support-matrix data-operation row out of raw-byte-only usage.
 - 2026-05-30: added an explicit public indexed partial-update helper for primary-key tables and extended the Fluss+Paimon support-contract E2E to verify Java-aligned partial-update semantics through a lookup round-trip.
+- 2026-05-30: started moving the canonical primary-key demo and helpers onto Fluss-documented `COMPACTED` KV format semantics, with the public Go row helpers now selecting KV row encoding from table metadata instead of assuming indexed KV rows.
 - 2026-05-30: promoted primary-key typed row helpers into the public `client/` surface with decoded lookup, single-row lookup, and row upsert coverage; during follow-up validation we confirmed true snapshot batch scanning still needs the separate Java-aligned snapshot-metadata/file path before it can be claimed in the support contract.
 - 2026-05-30: exposed Go-native public row/schema/type constructors and log-batch decode helpers through `client/`; validated all implemented scalar and composite data types in the Fluss+Paimon E2E all-types log round-trip.
 - 2026-05-30: validated the Go demo against the real Fluss/Paimon stack, including prefix lookup round-trip on `e2e_customer_orders`; updated the demo docs and support matrix to match the current behavior.

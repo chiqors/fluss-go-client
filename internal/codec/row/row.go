@@ -1,7 +1,6 @@
 package rowcodec
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
@@ -126,7 +125,7 @@ func DecodeKvRecordBatch(schema Schema, payload []byte) ([]any, error) {
 	return decodeRow(schema, recordPayload, true)
 }
 
-func DecodeValueRecordBatchRows(schema Schema, payload []byte) ([][]any, error) {
+func DecodeValueRecordBatchRows(schema Schema, payload []byte, indexed bool) ([][]any, error) {
 	if err := schema.Validate(); err != nil {
 		return nil, err
 	}
@@ -153,7 +152,7 @@ func DecodeValueRecordBatchRows(schema Schema, payload []byte) ([][]any, error) 
 		if recordEnd > limit {
 			return nil, fmt.Errorf("data: value record payload truncated")
 		}
-		row, err := decodeRow(schema, payload[off+6:recordEnd], true)
+		row, err := decodeRow(schema, payload[off+6:recordEnd], indexed)
 		if err != nil {
 			return nil, err
 		}
@@ -372,13 +371,13 @@ func encodeCompactedKeyValue(field FieldType, value any) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return encodeVarint32(v), nil
+		return encodeSignedVarint32(v), nil
 	case TypeInt64:
 		v, err := asInt64(value)
 		if err != nil {
 			return nil, err
 		}
-		return encodeVarint64(v), nil
+		return encodeSignedVarint64(v), nil
 	case TypeFloat32:
 		v, err := asFloat32(value)
 		if err != nil {
@@ -398,19 +397,13 @@ func encodeCompactedKeyValue(field FieldType, value any) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		out := make([]byte, 0, 4+len(v))
-		out = binary.LittleEndian.AppendUint32(out, uint32(len(v)))
-		out = append(out, v...)
-		return out, nil
+		return encodeLengthPrefixedBytes(v, false), nil
 	case TypeBytes:
 		v, err := asBytes(value)
 		if err != nil {
 			return nil, err
 		}
-		out := make([]byte, 0, 4+len(v))
-		out = binary.LittleEndian.AppendUint32(out, uint32(len(v)))
-		out = append(out, v...)
-		return out, nil
+		return encodeLengthPrefixedBytes(v, false), nil
 	case TypeDecimal:
 		d, err := asDecimal(value, field)
 		if err != nil {
@@ -422,7 +415,7 @@ func encodeCompactedKeyValue(field FieldType, value any) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return encodeVarint32(v), nil
+		return encodeSignedVarint32(v), nil
 	case TypeTimestampNtz:
 		v, err := asTimestampNtz(value)
 		if err != nil {
@@ -473,7 +466,7 @@ func encodeValue(field FieldType, value any, indexed bool) ([]byte, error) {
 		if indexed {
 			return encodeFixed32(v), nil
 		}
-		return encodeVarint32(v), nil
+		return encodeSignedVarint32(v), nil
 	case TypeInt64:
 		v, err := asInt64(value)
 		if err != nil {
@@ -482,7 +475,7 @@ func encodeValue(field FieldType, value any, indexed bool) ([]byte, error) {
 		if indexed {
 			return encodeFixed64(v), nil
 		}
-		return encodeVarint64(v), nil
+		return encodeSignedVarint64(v), nil
 	case TypeFloat32:
 		v, err := asFloat32(value)
 		if err != nil {
@@ -502,25 +495,13 @@ func encodeValue(field FieldType, value any, indexed bool) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if indexed {
-			out := make([]byte, 0, 4+len(v))
-			out = binary.LittleEndian.AppendUint32(out, uint32(len(v)))
-			out = append(out, v...)
-			return out, nil
-		}
-		return append([]byte(nil), v...), nil
+		return encodeLengthPrefixedBytes(v, indexed), nil
 	case TypeBytes:
 		v, err := asBytes(value)
 		if err != nil {
 			return nil, err
 		}
-		if indexed {
-			out := make([]byte, 0, 4+len(v))
-			out = binary.LittleEndian.AppendUint32(out, uint32(len(v)))
-			out = append(out, v...)
-			return out, nil
-		}
-		return append([]byte(nil), v...), nil
+		return encodeLengthPrefixedBytes(v, indexed), nil
 	case TypeDecimal:
 		d, err := asDecimal(value, field)
 		if err != nil {
@@ -535,7 +516,7 @@ func encodeValue(field FieldType, value any, indexed bool) ([]byte, error) {
 		if indexed {
 			return encodeFixed32(v), nil
 		}
-		return encodeVarint32(v), nil
+		return encodeSignedVarint32(v), nil
 	case TypeTimestampNtz:
 		v, err := asTimestampNtz(value)
 		if err != nil {
@@ -578,6 +559,18 @@ func encodeVarint32(v int32) []byte {
 }
 
 func encodeVarint64(v int64) []byte {
+	buf := make([]byte, binary.MaxVarintLen64)
+	n := binary.PutUvarint(buf, uint64(v))
+	return append([]byte(nil), buf[:n]...)
+}
+
+func encodeSignedVarint32(v int32) []byte {
+	buf := make([]byte, binary.MaxVarintLen32)
+	n := binary.PutUvarint(buf, uint64(uint32(v)))
+	return append([]byte(nil), buf[:n]...)
+}
+
+func encodeSignedVarint64(v int64) []byte {
 	buf := make([]byte, binary.MaxVarintLen64)
 	n := binary.PutUvarint(buf, uint64(v))
 	return append([]byte(nil), buf[:n]...)
@@ -640,10 +633,14 @@ func decodeRow(schema Schema, payload []byte, indexed bool) ([]any, error) {
 	var lens []uint32
 	if indexed {
 		lens = make([]uint32, 0, len(schema.Fields))
-		for _, field := range schema.Fields {
+		for i, field := range schema.Fields {
 			if field.IsFixed() {
 				lens = append(lens, uint32(fixedSize(field)))
 			} else {
+				if nullBits[i/8]&(1<<uint(i%8)) != 0 {
+					lens = append(lens, 0)
+					continue
+				}
 				if off+4 > len(payload) {
 					return nil, fmt.Errorf("data: payload truncated")
 				}
@@ -701,6 +698,42 @@ func compactedFieldSize(field FieldType, payload []byte) (int, error) {
 		return 4, nil
 	case TypeFloat64:
 		return 8, nil
+	case TypeString, TypeBytes:
+		length, n, err := decodeCompactedUint32(payload)
+		if err != nil {
+			return 0, err
+		}
+		return n + int(length), nil
+	case TypeDecimal:
+		if field.Length <= 18 {
+			_, n := binary.Uvarint(payload)
+			if n <= 0 {
+				return 0, fmt.Errorf("data: invalid compacted decimal payload")
+			}
+			return n, nil
+		}
+		length, n, err := decodeCompactedUint32(payload)
+		if err != nil {
+			return 0, err
+		}
+		return n + int(length), nil
+	case TypeTimestampNtz, TypeTimestampLtz:
+		if field.Length <= 3 {
+			_, n := binary.Uvarint(payload)
+			if n <= 0 {
+				return 0, fmt.Errorf("data: invalid compacted timestamp payload")
+			}
+			return n, nil
+		}
+		_, n1 := binary.Uvarint(payload)
+		if n1 <= 0 {
+			return 0, fmt.Errorf("data: invalid compacted timestamp payload")
+		}
+		_, n2 := binary.Uvarint(payload[n1:])
+		if n2 <= 0 {
+			return 0, fmt.Errorf("data: invalid compacted timestamp nanos payload")
+		}
+		return n1 + n2, nil
 	default:
 		return 0, fmt.Errorf("data: compacted decoding for variable field type %q not implemented", field.Kind)
 	}
@@ -762,11 +795,7 @@ func decodeValue(field FieldType, payload []byte, indexed bool) (any, error) {
 			}
 			return int32(binary.LittleEndian.Uint32(payload[:4])), nil
 		}
-		v, n := binary.Uvarint(payload)
-		if n <= 0 {
-			return nil, fmt.Errorf("data: invalid int32 varint")
-		}
-		return int32(v), nil
+		return decodeCompactedInt32(payload)
 	case TypeInt64:
 		if indexed {
 			if len(payload) < 8 {
@@ -774,11 +803,7 @@ func decodeValue(field FieldType, payload []byte, indexed bool) (any, error) {
 			}
 			return int64(binary.LittleEndian.Uint64(payload[:8])), nil
 		}
-		v, n := binary.Uvarint(payload)
-		if n <= 0 {
-			return nil, fmt.Errorf("data: invalid int64 varint")
-		}
-		return int64(v), nil
+		return decodeCompactedInt64(payload)
 	case TypeFloat32:
 		if len(payload) < 4 {
 			return nil, fmt.Errorf("data: float32 payload too short")
@@ -790,21 +815,13 @@ func decodeValue(field FieldType, payload []byte, indexed bool) (any, error) {
 		}
 		return math.Float64frombits(binary.LittleEndian.Uint64(payload[:8])), nil
 	case TypeString:
-		if indexed {
-			if len(payload) < 4 {
-				return nil, fmt.Errorf("data: string payload too short")
-			}
-			return string(bytes.Clone(payload[4:])), nil
+		raw, err := decodeLengthPrefixedBytes(payload, indexed)
+		if err != nil {
+			return nil, err
 		}
-		return string(bytes.Clone(payload)), nil
+		return string(raw), nil
 	case TypeBytes:
-		if indexed {
-			if len(payload) < 4 {
-				return nil, fmt.Errorf("data: bytes payload too short")
-			}
-			return append([]byte(nil), payload[4:]...), nil
-		}
-		return append([]byte(nil), payload...), nil
+		return decodeLengthPrefixedBytes(payload, indexed)
 	case TypeDecimal:
 		return decodeDecimal(field, payload, indexed)
 	case TypeDate:
@@ -814,11 +831,7 @@ func decodeValue(field FieldType, payload []byte, indexed bool) (any, error) {
 			}
 			return int32(binary.LittleEndian.Uint32(payload[:4])), nil
 		}
-		v, n := binary.Uvarint(payload)
-		if n <= 0 {
-			return nil, fmt.Errorf("data: invalid date varint")
-		}
-		return int32(v), nil
+		return decodeCompactedInt32(payload)
 	case TypeTime:
 		if indexed {
 			if len(payload) < 4 {
@@ -826,11 +839,7 @@ func decodeValue(field FieldType, payload []byte, indexed bool) (any, error) {
 			}
 			return int32(binary.LittleEndian.Uint32(payload[:4])), nil
 		}
-		v, n := binary.Uvarint(payload)
-		if n <= 0 {
-			return nil, fmt.Errorf("data: invalid time varint")
-		}
-		return int32(v), nil
+		return decodeCompactedInt32(payload)
 	case TypeTimestampNtz:
 		return decodeTimestampNtz(field, payload, indexed)
 	case TypeTimestampLtz:
@@ -1007,7 +1016,7 @@ func encodeDecimal(value Decimal, field FieldType, indexed bool) ([]byte, error)
 
 func encodeDecimalCompact(value Decimal, field FieldType) ([]byte, error) {
 	if field.Length <= 18 {
-		return encodeVarint64(value.Unscaled.Int64()), nil
+		return encodeSignedVarint64(value.Unscaled.Int64()), nil
 	}
 	return encodeLengthPrefixedBytes(value.Unscaled.Bytes(), false), nil
 }
@@ -1045,11 +1054,11 @@ func encodeTimestampNtz(value TimestampNtz, field FieldType, indexed bool) ([]by
 
 func encodeCompactedTimestampNtz(value TimestampNtz, field FieldType) ([]byte, error) {
 	if field.Length <= 3 {
-		return encodeVarint64(value.Millisecond), nil
+		return encodeSignedVarint64(value.Millisecond), nil
 	}
 	out := make([]byte, 0, 14)
-	out = append(out, encodeVarint64(value.Millisecond)...)
-	out = append(out, encodeVarint32(value.NanoOfMillisecond)...)
+	out = append(out, encodeSignedVarint64(value.Millisecond)...)
+	out = append(out, encodeSignedVarint32(value.NanoOfMillisecond)...)
 	return out, nil
 }
 
@@ -1088,11 +1097,11 @@ func encodeTimestampLtz(value TimestampLtz, field FieldType, indexed bool) ([]by
 
 func encodeCompactedTimestampLtz(value TimestampLtz, field FieldType) ([]byte, error) {
 	if field.Length <= 3 {
-		return encodeVarint64(value.EpochMillisecond), nil
+		return encodeSignedVarint64(value.EpochMillisecond), nil
 	}
 	out := make([]byte, 0, 14)
-	out = append(out, encodeVarint64(value.EpochMillisecond)...)
-	out = append(out, encodeVarint32(value.NanoOfMillisecond)...)
+	out = append(out, encodeSignedVarint64(value.EpochMillisecond)...)
+	out = append(out, encodeSignedVarint32(value.NanoOfMillisecond)...)
 	return out, nil
 }
 
@@ -1274,7 +1283,10 @@ func encodeLengthPrefixedBytes(raw []byte, indexed bool) []byte {
 		out = append(out, raw...)
 		return out
 	}
-	return append([]byte(nil), raw...)
+	out := make([]byte, 0, binary.MaxVarintLen32+len(raw))
+	out = append(out, encodeSignedVarint32(int32(len(raw)))...)
+	out = append(out, raw...)
+	return out
 }
 
 func decodeLengthPrefixedBytes(payload []byte, indexed bool) ([]byte, error) {
@@ -1284,5 +1296,36 @@ func decodeLengthPrefixedBytes(payload []byte, indexed bool) ([]byte, error) {
 		}
 		return append([]byte(nil), payload[4:]...), nil
 	}
-	return append([]byte(nil), payload...), nil
+	length, n, err := decodeCompactedUint32(payload)
+	if err != nil {
+		return nil, err
+	}
+	if n+int(length) > len(payload) {
+		return nil, fmt.Errorf("data: bytes payload too short")
+	}
+	return append([]byte(nil), payload[n:n+int(length)]...), nil
+}
+
+func decodeCompactedUint32(payload []byte) (uint32, int, error) {
+	v, n := binary.Uvarint(payload)
+	if n <= 0 {
+		return 0, 0, fmt.Errorf("data: invalid compacted uint32 payload")
+	}
+	return uint32(v), n, nil
+}
+
+func decodeCompactedInt32(payload []byte) (int32, error) {
+	v, n := binary.Uvarint(payload)
+	if n <= 0 {
+		return 0, fmt.Errorf("data: invalid compacted int32 payload")
+	}
+	return int32(uint32(v)), nil
+}
+
+func decodeCompactedInt64(payload []byte) (int64, error) {
+	v, n := binary.Uvarint(payload)
+	if n <= 0 {
+		return 0, fmt.Errorf("data: invalid compacted int64 payload")
+	}
+	return int64(v), nil
 }

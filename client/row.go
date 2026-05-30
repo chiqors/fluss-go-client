@@ -67,63 +67,117 @@ func (t *TableClient) AppendArrowRows(ctx context.Context, bucketID int32, rows 
 	return t.AppendLog(ctx, -1, 15000, []BucketRecordBatch{{BucketID: bucketID, Records: payload}})
 }
 
-// UpsertIndexedRow encodes a single row using the indexed row layout and upserts it into a KV table.
-func (t *TableClient) UpsertIndexedRow(ctx context.Context, bucketID int32, row Row, targetColumns []int32) ([]PutResult, error) {
+func (t *TableClient) kvEncoding(ctx context.Context) (schemaID int32, keyColumns []int, indexed bool, err error) {
 	info, err := t.ensureTableInfo(ctx)
 	if err != nil {
-		return nil, err
+		return 0, nil, false, err
 	}
 	columnNames, _, primaryKeys, _, err := metadata.ParseTableDescriptor(info.JSON)
 	if err != nil {
-		return nil, fmt.Errorf("fluss: parse table keys: %w", err)
+		return 0, nil, false, fmt.Errorf("fluss: parse table keys: %w", err)
 	}
-	keyColumns, err := keyColumnsByName(columnNames, primaryKeys)
+	keyColumns, err = keyColumnsByName(columnNames, primaryKeys)
+	if err != nil {
+		return 0, nil, false, err
+	}
+	properties, err := metadata.ParseTableProperties(info.JSON)
+	if err != nil {
+		return 0, nil, false, fmt.Errorf("fluss: parse table properties: %w", err)
+	}
+	indexed = !strings.EqualFold(properties["table.kv.format"], "compacted")
+	return info.SchemaID, keyColumns, indexed, nil
+}
+
+func (t *TableClient) encodeKVRow(ctx context.Context, row Row) (payload []byte, indexed bool, err error) {
+	schemaID, keyColumns, indexed, err := t.kvEncoding(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	payload, err = rowcodec.EncodeKvRecordBatch(row.Schema, row.Values, rowcodec.KvBatchOptions{SchemaID: schemaID, Indexed: indexed, KeyColumns: keyColumns})
+	if err != nil {
+		return nil, false, err
+	}
+	return payload, indexed, nil
+}
+
+func (t *TableClient) encodeKVDeleteRow(ctx context.Context, row Row) (payload []byte, indexed bool, err error) {
+	schemaID, keyColumns, indexed, err := t.kvEncoding(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	payload, err = rowcodec.EncodeKvDeleteRecordBatch(row.Schema, row.Values, rowcodec.KvBatchOptions{SchemaID: schemaID, Indexed: indexed, KeyColumns: keyColumns})
+	if err != nil {
+		return nil, false, err
+	}
+	return payload, indexed, nil
+}
+
+// UpsertRow encodes a single row using the table KV format and upserts it into a KV table.
+func (t *TableClient) UpsertRow(ctx context.Context, bucketID int32, row Row, targetColumns []int32) ([]PutResult, error) {
+	payload, _, err := t.encodeKVRow(ctx, row)
 	if err != nil {
 		return nil, err
 	}
-	payload, err := rowcodec.EncodeKvRecordBatch(row.Schema, row.Values, rowcodec.KvBatchOptions{SchemaID: info.SchemaID, Indexed: true, KeyColumns: keyColumns})
-	if err != nil {
-		return nil, err
-	}
+	targetColumns = normalizeTargetColumns(targetColumns, len(row.Schema.Fields))
 	if targetColumns == nil {
 		targetColumns = []int32{}
 	}
 	return t.UpsertKV(ctx, -1, 15000, targetColumns, nil, []BucketRecordBatch{{BucketID: bucketID, Records: payload}})
 }
 
-// PartialUpdateIndexedRow encodes a single indexed KV row and applies partial-update semantics
+// UpsertIndexedRow encodes a single row using the indexed row layout and upserts it into a KV table.
+func (t *TableClient) UpsertIndexedRow(ctx context.Context, bucketID int32, row Row, targetColumns []int32) ([]PutResult, error) {
+	return t.UpsertRow(ctx, bucketID, row, targetColumns)
+}
+
+// PartialUpdateRow encodes a single KV row and applies partial-update semantics
 // for the specified target columns. Callers should provide primary-key fields plus the columns
 // being updated; non-target, non-key columns should generally be left nil to mirror the upstream
 // Java partial-update contract.
-func (t *TableClient) PartialUpdateIndexedRow(ctx context.Context, bucketID int32, row Row, targetColumns []int32) ([]PutResult, error) {
+func (t *TableClient) PartialUpdateRow(ctx context.Context, bucketID int32, row Row, targetColumns []int32) ([]PutResult, error) {
 	if len(targetColumns) == 0 {
-		return nil, fmt.Errorf("fluss: partial update indexed row: at least one target column is required")
+		return nil, fmt.Errorf("fluss: partial update row: at least one target column is required")
 	}
-	return t.UpsertIndexedRow(ctx, bucketID, row, targetColumns)
+	return t.UpsertRow(ctx, bucketID, row, targetColumns)
+}
+
+// PartialUpdateIndexedRow encodes a single indexed KV row and applies partial-update semantics
+// for the specified target columns.
+func (t *TableClient) PartialUpdateIndexedRow(ctx context.Context, bucketID int32, row Row, targetColumns []int32) ([]PutResult, error) {
+	return t.PartialUpdateRow(ctx, bucketID, row, targetColumns)
+}
+
+// DeleteRow encodes a tombstone record for the row key and deletes it from a KV table.
+func (t *TableClient) DeleteRow(ctx context.Context, bucketID int32, row Row, targetColumns []int32) ([]PutResult, error) {
+	payload, _, err := t.encodeKVDeleteRow(ctx, row)
+	if err != nil {
+		return nil, err
+	}
+	targetColumns = normalizeTargetColumns(targetColumns, len(row.Schema.Fields))
+	if targetColumns == nil {
+		targetColumns = []int32{}
+	}
+	return t.UpsertKV(ctx, -1, 15000, targetColumns, nil, []BucketRecordBatch{{BucketID: bucketID, Records: payload}})
+}
+
+func normalizeTargetColumns(targetColumns []int32, fieldCount int) []int32 {
+	if len(targetColumns) == 0 {
+		return nil
+	}
+	if len(targetColumns) != fieldCount {
+		return targetColumns
+	}
+	for i, column := range targetColumns {
+		if column != int32(i) {
+			return targetColumns
+		}
+	}
+	return nil
 }
 
 // DeleteIndexedRow encodes a tombstone record for the row key and deletes it from a KV table.
 func (t *TableClient) DeleteIndexedRow(ctx context.Context, bucketID int32, row Row, targetColumns []int32) ([]PutResult, error) {
-	info, err := t.ensureTableInfo(ctx)
-	if err != nil {
-		return nil, err
-	}
-	columnNames, _, primaryKeys, _, err := metadata.ParseTableDescriptor(info.JSON)
-	if err != nil {
-		return nil, fmt.Errorf("fluss: parse table keys: %w", err)
-	}
-	keyColumns, err := keyColumnsByName(columnNames, primaryKeys)
-	if err != nil {
-		return nil, err
-	}
-	payload, err := rowcodec.EncodeKvDeleteRecordBatch(row.Schema, row.Values, rowcodec.KvBatchOptions{SchemaID: info.SchemaID, Indexed: true, KeyColumns: keyColumns})
-	if err != nil {
-		return nil, err
-	}
-	if targetColumns == nil {
-		targetColumns = []int32{}
-	}
-	return t.UpsertKV(ctx, -1, 15000, targetColumns, nil, []BucketRecordBatch{{BucketID: bucketID, Records: payload}})
+	return t.DeleteRow(ctx, bucketID, row, targetColumns)
 }
 
 func keyColumnsByName(columnNames []string, keyNames []string) ([]int, error) {
@@ -196,7 +250,7 @@ func DecodeProjectedArrowLogBatchRows(schema Schema, payload []byte) ([][]any, e
 
 // DecodeIndexedValueBatchRows decodes a value-record batch payload returned by KV limit scans.
 func DecodeIndexedValueBatchRows(schema Schema, payload []byte) ([][]any, error) {
-	values, err := rowcodec.DecodeValueRecordBatchRows(schema, payload)
+	values, err := rowcodec.DecodeValueRecordBatchRows(schema, payload, true)
 	if err != nil {
 		return nil, fmt.Errorf("fluss: decode indexed value batch rows: %w", err)
 	}
@@ -223,8 +277,32 @@ func DecodeIndexedLookupValuePayload(schema Schema, payload []byte) ([]any, erro
 	return values, nil
 }
 
-// LookupIndexedRows looks up one or more primary-key rows and decodes them into public row values.
-func (t *TableClient) LookupIndexedRows(ctx context.Context, bucketID int32, schema Schema, rows []Row, keyColumns []int) ([][]any, error) {
+// DecodeLookupValuePayload decodes a KV lookup value prefixed with a 2-byte schema id using the table KV format.
+func DecodeLookupValuePayload(schema Schema, payload []byte, indexed bool) ([]any, error) {
+	if len(payload) < 2 {
+		return nil, fmt.Errorf("fluss: decode lookup value payload: data: payload too short")
+	}
+	var (
+		values []any
+		err    error
+	)
+	if indexed {
+		values, err = rowcodec.DecodeIndexed(schema, payload[2:])
+	} else {
+		values, err = rowcodec.DecodeCompacted(schema, payload[2:])
+	}
+	if err != nil {
+		return nil, fmt.Errorf("fluss: decode lookup value payload: %w", err)
+	}
+	return values, nil
+}
+
+// LookupRows looks up one or more primary-key rows and decodes them into public row values.
+func (t *TableClient) LookupRows(ctx context.Context, bucketID int32, schema Schema, rows []Row, keyColumns []int) ([][]any, error) {
+	_, _, indexed, err := t.kvEncoding(ctx)
+	if err != nil {
+		return nil, err
+	}
 	req := LookupBucketRequest{BucketID: bucketID}
 	for i, row := range rows {
 		key, err := row.EncodeLookupKey(keyColumns...)
@@ -249,29 +327,63 @@ func (t *TableClient) LookupIndexedRows(ctx context.Context, bucketID int32, sch
 			out = append(out, nil)
 			continue
 		}
-		values, err := DecodeIndexedLookupValuePayload(schema, payload)
+		values, err := DecodeLookupValuePayload(schema, payload, indexed)
 		if err != nil {
-			return nil, fmt.Errorf("fluss: lookup indexed rows: decode row %d: %w", i, err)
+			return nil, fmt.Errorf("fluss: lookup rows: decode row %d: %w", i, err)
 		}
 		out = append(out, values)
 	}
 	return out, nil
 }
 
-// LookupIndexedRow looks up a single primary-key row and returns either the decoded row or nil.
-func (t *TableClient) LookupIndexedRow(ctx context.Context, bucketID int32, schema Schema, row Row, keyColumns []int) ([]any, error) {
-	values, err := t.LookupIndexedRows(ctx, bucketID, schema, []Row{row}, keyColumns)
+// LookupIndexedRows looks up one or more primary-key rows and decodes them into public row values.
+func (t *TableClient) LookupIndexedRows(ctx context.Context, bucketID int32, schema Schema, rows []Row, keyColumns []int) ([][]any, error) {
+	return t.LookupRows(ctx, bucketID, schema, rows, keyColumns)
+}
+
+// LookupRow looks up a single primary-key row and returns either the decoded row or nil.
+func (t *TableClient) LookupRow(ctx context.Context, bucketID int32, schema Schema, row Row, keyColumns []int) ([]any, error) {
+	values, err := t.LookupRows(ctx, bucketID, schema, []Row{row}, keyColumns)
 	if err != nil {
 		return nil, err
 	}
 	if len(values) != 1 {
-		return nil, fmt.Errorf("fluss: lookup indexed row: unexpected result count %d", len(values))
+		return nil, fmt.Errorf("fluss: lookup row: unexpected result count %d", len(values))
 	}
 	return values[0], nil
 }
 
-// ScanIndexedRows drains the public KV scanner and decodes all value batches into rows.
-func (t *TableClient) ScanIndexedRows(ctx context.Context, partitionID *int64, bucketID int32, limit *int64, batchSizeBytes int32, schema Schema) ([][]any, error) {
+// LookupIndexedRow looks up a single primary-key row and returns either the decoded row or nil.
+func (t *TableClient) LookupIndexedRow(ctx context.Context, bucketID int32, schema Schema, row Row, keyColumns []int) ([]any, error) {
+	return t.LookupRow(ctx, bucketID, schema, row, keyColumns)
+}
+
+// DecodeValueBatchRows decodes a value-record batch payload returned by KV limit scans.
+func DecodeValueBatchRows(schema Schema, payload []byte, indexed bool) ([][]any, error) {
+	values, err := rowcodec.DecodeValueRecordBatchRows(schema, payload, indexed)
+	if err != nil {
+		if indexed {
+			return nil, fmt.Errorf("fluss: decode indexed value batch rows: %w", err)
+		}
+		return nil, fmt.Errorf("fluss: decode compacted value batch rows: %w", err)
+	}
+	return values, nil
+}
+
+// DecodeLimitScanRows decodes limit-scan rows for either log or primary-key tables.
+func DecodeLimitScanRows(schema Schema, result LimitScanResult, indexed bool) ([][]any, error) {
+	if result.IsLogTable {
+		return DecodeIndexedLogBatchRows(schema, result.Records)
+	}
+	return DecodeValueBatchRows(schema, result.Records, indexed)
+}
+
+// ScanRows drains the public KV scanner and decodes all value batches into rows.
+func (t *TableClient) ScanRows(ctx context.Context, partitionID *int64, bucketID int32, limit *int64, batchSizeBytes int32, schema Schema) ([][]any, error) {
+	_, _, indexed, err := t.kvEncoding(ctx)
+	if err != nil {
+		return nil, err
+	}
 	scanner := t.NewKVScanner(partitionID, bucketID, limit, batchSizeBytes)
 	defer func() { _ = scanner.Close(ctx) }()
 
@@ -293,13 +405,18 @@ func (t *TableClient) ScanIndexedRows(ctx context.Context, partitionID *int64, b
 			continue
 		}
 		emptyPages = 0
-		rows, err := DecodeIndexedValueBatchRows(schema, result.Records)
+		rows, err := DecodeValueBatchRows(schema, result.Records, indexed)
 		if err != nil {
-			return nil, fmt.Errorf("fluss: scan indexed rows: decode batch: %w", err)
+			return nil, fmt.Errorf("fluss: scan rows: decode batch: %w", err)
 		}
 		out = append(out, rows...)
 		if !result.HasMoreResults {
 			return out, nil
 		}
 	}
+}
+
+// ScanIndexedRows drains the public KV scanner and decodes all value batches into rows.
+func (t *TableClient) ScanIndexedRows(ctx context.Context, partitionID *int64, bucketID int32, limit *int64, batchSizeBytes int32, schema Schema) ([][]any, error) {
+	return t.ScanRows(ctx, partitionID, bucketID, limit, batchSizeBytes, schema)
 }

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -185,6 +186,12 @@ func metadataResponseForSingleBucket(host string, port int32, path TablePath, ta
 			}},
 		}},
 	}
+}
+
+func metadataResponseForSingleBucketWithJSON(host string, port int32, path TablePath, tableID int64, schemaID int32, tableJSON []byte) *flusspb.MetadataResponse {
+	resp := metadataResponseForSingleBucket(host, port, path, tableID, schemaID)
+	resp.TableMetadata[0].TableJson = tableJSON
+	return resp
 }
 
 func TestDialAndAdminFlow(t *testing.T) {
@@ -518,6 +525,44 @@ func TestDecodeIndexedLimitScanRows(t *testing.T) {
 	}
 	if len(kvRows) != 1 || kvRows[0][0] != int64(42) || kvRows[0][1] != "Ada Lovelace" || kvRows[0][2] != "gold" {
 		t.Fatalf("unexpected kv rows: %#v", kvRows)
+	}
+}
+
+func TestDecodeCompactedLimitScanRows(t *testing.T) {
+	kvSchema := NewSchema(Int64Type(), StringType(), StringType())
+	kvRow, err := NewRow(kvSchema, int64(42), "Ada Lovelace", "diamond")
+	if err != nil {
+		t.Fatalf("NewRow(kv) error = %v", err)
+	}
+	kvPayload, err := rowcodec.EncodeKvRecordBatch(kvSchema, kvRow.Values, rowcodec.KvBatchOptions{SchemaID: 1, Indexed: false, KeyColumns: []int{0}})
+	if err != nil {
+		t.Fatalf("EncodeKvRecordBatch() error = %v", err)
+	}
+	_, recordPayload, err := decodeKvBatchForTest(kvPayload)
+	if err != nil {
+		t.Fatalf("decodeKvBatchForTest() error = %v", err)
+	}
+	keyLen, n := binary.Uvarint(recordPayload[4:])
+	if n <= 0 {
+		t.Fatalf("invalid key length varint")
+	}
+	rowPayload := recordPayload[4+n+int(keyLen):]
+	valueRecord := make([]byte, 0, 4+2+len(rowPayload))
+	valueRecord = binary.LittleEndian.AppendUint32(valueRecord, uint32(2+len(rowPayload)))
+	valueRecord = binary.LittleEndian.AppendUint16(valueRecord, 1)
+	valueRecord = append(valueRecord, rowPayload...)
+	valueBatch := make([]byte, 0, 9+len(valueRecord))
+	valueBatch = binary.LittleEndian.AppendUint32(valueBatch, uint32(5+len(valueRecord)))
+	valueBatch = append(valueBatch, 0)
+	valueBatch = binary.LittleEndian.AppendUint32(valueBatch, 1)
+	valueBatch = append(valueBatch, valueRecord...)
+
+	kvRows, err := DecodeLimitScanRows(kvSchema, LimitScanResult{IsLogTable: false, Records: valueBatch}, false)
+	if err != nil {
+		t.Fatalf("DecodeLimitScanRows(compacted kv) error = %v", err)
+	}
+	if len(kvRows) != 1 || kvRows[0][0] != int64(42) || kvRows[0][1] != "Ada Lovelace" || kvRows[0][2] != "diamond" {
+		t.Fatalf("unexpected compacted kv rows: %#v", kvRows)
 	}
 }
 
@@ -955,5 +1000,117 @@ func TestUpsertWriterLifecycleAndOptions(t *testing.T) {
 	}
 	if _, err := writer.Write(ctx, []BucketRecordBatch{{BucketID: 0, Records: []byte("x")}}); err == nil || err != ErrClosed {
 		t.Fatalf("expected ErrClosed after Close, got %v", err)
+	}
+}
+
+func TestPartialUpdateIndexedRowUsesTargetColumnsAndNullablePayload(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata, flusspb.ApiKey_PutKV)), nil
+	})
+
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, metadataResponseForSingleBucketWithJSON(host, int32(port), TablePath{DatabaseName: "demo", TableName: "customers"}, 51, 7, []byte(`{
+			"table_id":51,
+			"table_path":{"database_name":"demo","table_name":"customers"},
+			"schema_id":7,
+			"properties":{"table.kv.format":"indexed","table.kv.format-version":"2"},
+			"primary_key":["customer_id"],
+			"columns":[
+				{"name":"customer_id","type":"BIGINT"},
+				{"name":"customer_name","type":"STRING"},
+				{"name":"customer_tier","type":"STRING"}
+			]
+		}`))), nil
+	})
+
+	srv.on(flusspb.ApiKey_PutKV, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.PutKvRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if got := req.GetTargetColumns(); len(got) != 2 || got[0] != 0 || got[1] != 2 {
+			t.Fatalf("unexpected target columns: %#v", got)
+		}
+		if len(req.GetBucketsReq()) != 1 {
+			t.Fatalf("unexpected bucket req count: %d", len(req.GetBucketsReq()))
+		}
+		_, recordPayload, err := decodeKvBatchForTest(req.GetBucketsReq()[0].GetRecords())
+		if err != nil {
+			t.Fatalf("decodeKvBatchForTest() error = %v", err)
+		}
+		keyLen, n := binary.Uvarint(recordPayload[4:])
+		if n <= 0 {
+			t.Fatalf("invalid key varint")
+		}
+		rowPayload := recordPayload[4+n+int(keyLen):]
+		schema := rowcodec.NewSchema(rowcodec.Int64Type(), rowcodec.StringType(), rowcodec.StringType())
+		got, err := rowcodec.DecodeIndexed(schema, rowPayload)
+		if err != nil {
+			t.Fatalf("DecodeIndexed() error = %v", err)
+		}
+		want := []any{int64(42), nil, "diamond"}
+		for i := range want {
+			if !testValueEqual(got[i], want[i]) {
+				t.Fatalf("row[%d] = %#v, want %#v", i, got[i], want[i])
+			}
+		}
+		return mustMarshal(t, &flusspb.PutKvResponse{
+			BucketsResp: []*flusspb.PbPutKvRespForBucket{{
+				BucketId:     proto.Int32(0),
+				LogEndOffset: proto.Int64(88),
+			}},
+		}), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	schema := NewSchema(Int64Type(), StringType(), StringType())
+	row, err := NewRow(schema, int64(42), nil, "diamond")
+	if err != nil {
+		t.Fatalf("NewRow() error = %v", err)
+	}
+
+	got, err := cli.Table(TablePath{DatabaseName: "demo", TableName: "customers"}).PartialUpdateIndexedRow(ctx, 0, row, []int32{0, 2})
+	if err != nil {
+		t.Fatalf("PartialUpdateIndexedRow() error = %v", err)
+	}
+	if len(got) != 1 || got[0].LogEndOffset != 88 {
+		t.Fatalf("unexpected put results: %#v", got)
+	}
+}
+
+func testValueEqual(got, want any) bool {
+	switch wantValue := want.(type) {
+	case nil:
+		return got == nil
+	case []byte:
+		gotValue, ok := got.([]byte)
+		return ok && bytes.Equal(gotValue, wantValue)
+	default:
+		return got == want
 	}
 }

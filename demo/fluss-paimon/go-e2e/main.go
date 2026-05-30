@@ -317,7 +317,7 @@ func runPrimaryKeyUpsertAndLookup(ctx context.Context, cli *client.Client, env e
 	})
 
 	for i, row := range rows {
-		result, err := cli.Table(env.kvTable).UpsertIndexedRow(ctx, 0, row, []int32{0, 1, 2})
+		result, err := cli.Table(env.kvTable).UpsertRow(ctx, 0, row, nil)
 		if err != nil {
 			return fmt.Errorf("upsert kv row %d: %w", i, err)
 		}
@@ -327,7 +327,7 @@ func runPrimaryKeyUpsertAndLookup(ctx context.Context, cli *client.Client, env e
 		fmt.Printf("UpsertKV[%d]: bucket=%d log_end_offset=%d\n", i, result[0].BucketID, result[0].LogEndOffset)
 	}
 
-	lookupRows, err := cli.Table(env.kvTable).LookupIndexedRows(ctx, 0, schema, rows, []int{0})
+	lookupRows, err := cli.Table(env.kvTable).LookupRows(ctx, 0, schema, rows, []int{0})
 	if err != nil {
 		return fmt.Errorf("lookup kv rows: %w", err)
 	}
@@ -456,7 +456,7 @@ func runPrimaryKeyPartialUpdate(ctx context.Context, cli *client.Client, env env
 		{int64(42), nil, "diamond"},
 	})[0]
 
-	result, err := cli.Table(env.kvTable).PartialUpdateIndexedRow(ctx, 0, row, []int32{0, 2})
+	result, err := cli.Table(env.kvTable).PartialUpdateRow(ctx, 0, row, []int32{0, 2})
 	if err != nil {
 		return fmt.Errorf("partial update kv row: %w", err)
 	}
@@ -465,7 +465,7 @@ func runPrimaryKeyPartialUpdate(ctx context.Context, cli *client.Client, env env
 	}
 	fmt.Printf("PartialUpdateKV: bucket=%d log_end_offset=%d target_columns=%v\n", result[0].BucketID, result[0].LogEndOffset, []int32{0, 2})
 
-	lookup, err := cli.Table(env.kvTable).LookupIndexedRow(ctx, 0, schema, row, []int{0})
+	lookup, err := cli.Table(env.kvTable).LookupRow(ctx, 0, schema, row, []int{0})
 	if err != nil {
 		return fmt.Errorf("lookup partial-update row: %w", err)
 	}
@@ -485,14 +485,14 @@ func runPrimaryKeyDelete(ctx context.Context, cli *client.Client, env environmen
 	)
 	row := mustRows(schema, [][]any{{int64(99), "Delete Me", "silver"}})[0]
 
-	if _, err := cli.Table(env.kvTable).UpsertIndexedRow(ctx, 0, row, []int32{0, 1, 2}); err != nil {
+	if _, err := cli.Table(env.kvTable).UpsertRow(ctx, 0, row, nil); err != nil {
 		return fmt.Errorf("seed delete row: %w", err)
 	}
-	if _, err := cli.Table(env.kvTable).DeleteIndexedRow(ctx, 0, row, nil); err != nil {
+	if _, err := cli.Table(env.kvTable).DeleteRow(ctx, 0, row, nil); err != nil {
 		return fmt.Errorf("delete row: %w", err)
 	}
 
-	found, err := cli.Table(env.kvTable).LookupIndexedRow(ctx, 0, schema, row, []int{0})
+	found, err := cli.Table(env.kvTable).LookupRow(ctx, 0, schema, row, []int{0})
 	if err != nil {
 		return fmt.Errorf("lookup deleted row: %w", err)
 	}
@@ -511,7 +511,7 @@ func runPrimaryKeyLimitScan(ctx context.Context, cli *client.Client, env environ
 	)
 	fields := []string{"customer_id", "customer_name", "customer_tier"}
 	want := []decodedRow{
-		{fields: fields, values: []any{int64(42), "Ada Lovelace", "gold"}},
+		{fields: fields, values: []any{int64(42), "Ada Lovelace", "diamond"}},
 		{fields: fields, values: []any{int64(43), "Grace Hopper", "platinum"}},
 	}
 
@@ -522,7 +522,7 @@ func runPrimaryKeyLimitScan(ctx context.Context, cli *client.Client, env environ
 	if limitResult.IsLogTable {
 		return fmt.Errorf("limit scan kv table: expected primary-key-table result")
 	}
-	decoded, err := client.DecodeIndexedLimitScanRows(schema, limitResult)
+	decoded, err := client.DecodeLimitScanRows(schema, limitResult, false)
 	if err != nil {
 		return fmt.Errorf("decode kv limit scan: %w", err)
 	}
@@ -554,7 +554,7 @@ func runPrimaryKeyPrefixLookup(ctx context.Context, cli *client.Client, env envi
 	})
 
 	for i, row := range rows {
-		result, err := cli.Table(env.prefixTable).UpsertIndexedRow(ctx, 0, row, []int32{0, 1, 2, 3})
+		result, err := cli.Table(env.prefixTable).UpsertRow(ctx, 0, row, nil)
 		if err != nil {
 			return fmt.Errorf("upsert prefix row %d: %w", i, err)
 		}
@@ -581,7 +581,7 @@ func runPrimaryKeyPrefixLookup(ctx context.Context, cli *client.Client, env envi
 
 	decoded := make([]decodedRow, 0, len(result[0].Values[0]))
 	for i, payload := range result[0].Values[0] {
-		values, err := client.DecodeIndexedLookupValuePayload(schema, payload)
+		values, err := client.DecodeLookupValuePayload(schema, payload, false)
 		if err != nil {
 			return fmt.Errorf("decode prefix lookup %d: %w", i, err)
 		}

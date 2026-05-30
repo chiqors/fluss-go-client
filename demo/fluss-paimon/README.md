@@ -49,8 +49,8 @@ The SQL bootstrap creates a Fluss catalog plus focused support-contract tables:
 - database: `fluss`
 - indexed log table: `e2e_orders`
 - Arrow log table: `e2e_orders_arrow` (projection-focused, using Fluss default Arrow compression settings)
-- primary-key table: `e2e_customers`
-- prefix-lookup table: `e2e_customer_orders`
+- primary-key table: `e2e_customers` (`COMPACTED` KV format)
+- prefix-lookup table: `e2e_customer_orders` (`COMPACTED` KV format)
 - all-types log table: `e2e_all_types`
 
 This table now uses the default Fluss `ARROW` compression settings, so the support-contract E2E covers Arrow projection semantics under the normal `ZSTD`-backed path rather than a special uncompressed override.
@@ -67,8 +67,8 @@ The Go service then runs a matrix-style feature harness:
 - appends indexed log rows and verifies log `LimitScan` returns the latest rows, following the upstream Java client contract
 - appends Arrow log rows, fetches them back, and verifies column projection through `FetchLogWithOptions(...)` against a real `ARROW` log table
 - appends and scans a dedicated all-types log row covering scalar, temporal, decimal, and nested `ARRAY/MAP/ROW` codec support
-- upserts indexed primary-key rows and verifies KV lookup round-trips
-- applies an indexed primary-key partial update and verifies the untouched column is preserved by a follow-up lookup
+- upserts primary-key rows through the Go SDK’s table-format-aware KV helper and verifies lookup round-trips
+- applies a primary-key partial update and verifies the untouched column is preserved by a follow-up lookup
 - deletes a primary-key row and verifies lookup returns no value
 - performs a prefix lookup against the prefix-key table and verifies the returned rows by membership rather than unsafe ordering assumptions
 - fails the container if any of those paths break against the real Fluss cluster
