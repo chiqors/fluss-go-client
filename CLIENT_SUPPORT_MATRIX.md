@@ -30,15 +30,7 @@ These operations live under the table append, scan, upsert, and lookup surfaces.
 | Primary Key | Batch Scan with Limit | ✔️ |  |
 | Primary Key | Batch Scan (Snapshot) | ✔️ |  |
 
-Go support notes:
-
-- `Scan with Projection` is routed through `FetchLog` in the current Go client, but the demo only exercises projection-disabled reads today.
-- `Batch Scan with Limit` is represented by `LimitScan` for log tables and `KVScanner` lifecycle coverage for key-value tables.
-- `Batch Scan (Snapshot)` and typed table APIs are not exposed as first-class Go SDK surfaces yet.
-
-:::tip
 For more details, see [Table Overview](https://fluss.apache.org/docs/table-design/data-types/).
-:::
 
 ## Data Types
 
@@ -112,6 +104,4 @@ For more details, see [Data Types](table-design/data-types.md).
 | Lance | ✔️ | ✔️ |
 | Paimon | ✔️ |  |
 
-:::tip
 For more details, see [Streaming Lakehouse](https://fluss.apache.org/docs/streaming-lakehouse/overview/).
-:::

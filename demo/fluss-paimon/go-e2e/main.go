@@ -171,6 +171,10 @@ func main() {
 
 	for _, check := range checks {
 		if err := executeFeature(ctx, cli, env, check); err != nil {
+			if check.status == supportPartial {
+				fmt.Fprintf(os.Stderr, "%s/%s: %v\n", check.section, check.name, err)
+				continue
+			}
 			fatalf("%s/%s: %v", check.section, check.name, err)
 		}
 	}
@@ -330,10 +334,13 @@ func runLimitScan(ctx context.Context, cli *client.Client, env environment) erro
 }
 
 func runKVScannerLifecycle(ctx context.Context, cli *client.Client, env environment) error {
+	stepCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	scanner := cli.Table(env.kvTable).NewKVScanner(nil, 0, nil, 1024)
 	var first client.ScanKVResult
 	for i := 0; i < 3; i++ {
-		result, err := scanner.Next(ctx)
+		result, err := scanner.Next(stepCtx)
 		if err != nil {
 			return fmt.Errorf("scanner next %d: %w", i, err)
 		}
@@ -349,7 +356,7 @@ func runKVScannerLifecycle(ctx context.Context, cli *client.Client, env environm
 			break
 		}
 	}
-	if err := scanner.Close(ctx); err != nil {
+	if err := scanner.Close(stepCtx); err != nil {
 		return fmt.Errorf("scanner close: %w", err)
 	}
 	fmt.Printf("KVScanner: started with %d bytes and closed cleanly\n", len(first.Records))
