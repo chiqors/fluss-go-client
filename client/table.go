@@ -41,39 +41,87 @@ func (t *TableClient) Schema(ctx context.Context, schemaID *int32) (SchemaInfo, 
 }
 
 func (t *TableClient) AppendLog(ctx context.Context, acks int32, timeoutMs int32, buckets []BucketRecordBatch) ([]ProduceResult, error) {
-	var lastErr error
+	var allResults []ProduceResult
+	pending := cloneBucketRecordBatches(buckets)
 	for attempt := 0; attempt < 2; attempt++ {
-		results, err := t.appendLogOnce(ctx, acks, timeoutMs, buckets)
+		results, err := t.appendLogOnce(ctx, acks, timeoutMs, pending)
+		allResults = mergeProduceResults(allResults, results)
 		if err == nil {
-			return results, nil
+			sort.Slice(allResults, func(i, j int) bool { return allResults[i].BucketID < allResults[j].BucketID })
+			return allResults, nil
 		}
-		lastErr = err
-		if attempt == 1 || !isRetryableWriteRouteErr(err) {
-			break
+		partial, ok := err.(*PartialWriteError)
+		if !ok {
+			if attempt == 1 || !isRetryableWriteRouteErr(err) {
+				return allResults, err
+			}
+			if refreshErr := t.client.RefreshMetadata(ctx, []TablePath{t.path}, nil); refreshErr != nil {
+				return allResults, err
+			}
+			continue
+		}
+		retryable, terminal := splitBucketWriteFailures(partial)
+		if len(retryable) == 0 || attempt == 1 {
+			sort.Slice(allResults, func(i, j int) bool { return allResults[i].BucketID < allResults[j].BucketID })
+			return allResults, terminal
 		}
 		if refreshErr := t.client.RefreshMetadata(ctx, []TablePath{t.path}, nil); refreshErr != nil {
-			break
+			sort.Slice(allResults, func(i, j int) bool { return allResults[i].BucketID < allResults[j].BucketID })
+			return allResults, terminal
+		}
+		pending = filterBucketRecordBatchesByFailure(pending, retryable)
+		if len(pending) == 0 {
+			sort.Slice(allResults, func(i, j int) bool { return allResults[i].BucketID < allResults[j].BucketID })
+			return allResults, terminal
+		}
+		if terminal != nil && len(retryable) != len(partial.Failures) {
+			sort.Slice(allResults, func(i, j int) bool { return allResults[i].BucketID < allResults[j].BucketID })
+			return allResults, terminal
 		}
 	}
-	return nil, lastErr
+	sort.Slice(allResults, func(i, j int) bool { return allResults[i].BucketID < allResults[j].BucketID })
+	return allResults, nil
 }
 
 func (t *TableClient) UpsertKV(ctx context.Context, acks int32, timeoutMs int32, targetColumns []int32, aggMode *int32, buckets []BucketRecordBatch) ([]PutResult, error) {
-	var lastErr error
+	var allResults []PutResult
+	pending := cloneBucketRecordBatches(buckets)
 	for attempt := 0; attempt < 2; attempt++ {
-		results, err := t.upsertKVOnce(ctx, acks, timeoutMs, targetColumns, aggMode, buckets)
+		results, err := t.upsertKVOnce(ctx, acks, timeoutMs, targetColumns, aggMode, pending)
+		allResults = mergePutResults(allResults, results)
 		if err == nil {
-			return results, nil
+			return allResults, nil
 		}
-		lastErr = err
-		if attempt == 1 || !isRetryableWriteRouteErr(err) {
-			break
+		partial, ok := err.(*PartialWriteError)
+		if !ok {
+			if attempt == 1 || !isRetryableWriteRouteErr(err) {
+				return allResults, err
+			}
+			if refreshErr := t.client.RefreshMetadata(ctx, []TablePath{t.path}, nil); refreshErr != nil {
+				return allResults, err
+			}
+			continue
+		}
+		retryable, terminal := splitBucketWriteFailures(partial)
+		if len(retryable) == 0 || attempt == 1 {
+			sort.Slice(allResults, func(i, j int) bool { return allResults[i].BucketID < allResults[j].BucketID })
+			return allResults, terminal
 		}
 		if refreshErr := t.client.RefreshMetadata(ctx, []TablePath{t.path}, nil); refreshErr != nil {
-			break
+			sort.Slice(allResults, func(i, j int) bool { return allResults[i].BucketID < allResults[j].BucketID })
+			return allResults, terminal
+		}
+		pending = filterBucketRecordBatchesByFailure(pending, retryable)
+		if len(pending) == 0 {
+			sort.Slice(allResults, func(i, j int) bool { return allResults[i].BucketID < allResults[j].BucketID })
+			return allResults, terminal
+		}
+		if terminal != nil && len(retryable) != len(partial.Failures) {
+			sort.Slice(allResults, func(i, j int) bool { return allResults[i].BucketID < allResults[j].BucketID })
+			return allResults, terminal
 		}
 	}
-	return nil, lastErr
+	return allResults, nil
 }
 
 func (t *TableClient) upsertKVOnce(ctx context.Context, acks int32, timeoutMs int32, targetColumns []int32, aggMode *int32, buckets []BucketRecordBatch) ([]PutResult, error) {
@@ -86,6 +134,7 @@ func (t *TableClient) upsertKVOnce(ctx context.Context, acks int32, timeoutMs in
 		return nil, err
 	}
 	var out []PutResult
+	var failures []BucketWriteError
 	for addr, batchList := range grouped {
 		resp, err := t.client.rpc.Invoke(ctx, addr, flusspb.ApiKey_PutKV, "PutKvRequest", "PutKvResponse", func(m proto.Message) error {
 			req, ok := m.(*flusspb.PutKvRequest)
@@ -108,10 +157,17 @@ func (t *TableClient) upsertKVOnce(ctx context.Context, acks int32, timeoutMs in
 			return nil, err
 		}
 		results, err := parsePutResults(resp.(proto.Message))
-		if err != nil {
-			return nil, err
-		}
 		out = append(out, results...)
+		if err != nil {
+			partial, ok := err.(*PartialWriteError)
+			if !ok {
+				return out, err
+			}
+			failures = append(failures, partial.Failures...)
+		}
+	}
+	if len(failures) > 0 {
+		return out, &PartialWriteError{Operation: "upsert kv", Failures: failures}
 	}
 	return out, nil
 }
@@ -126,6 +182,7 @@ func (t *TableClient) appendLogOnce(ctx context.Context, acks int32, timeoutMs i
 		return nil, err
 	}
 	var out []ProduceResult
+	var failures []BucketWriteError
 	for addr, batchList := range grouped {
 		resp, err := t.client.rpc.Invoke(ctx, addr, flusspb.ApiKey_ProduceLog, "ProduceLogRequest", "ProduceLogResponse", func(m proto.Message) error {
 			req, ok := m.(*flusspb.ProduceLogRequest)
@@ -144,12 +201,19 @@ func (t *TableClient) appendLogOnce(ctx context.Context, acks int32, timeoutMs i
 			return nil, err
 		}
 		results, err := parseProduceResults(resp.(proto.Message))
-		if err != nil {
-			return nil, err
-		}
 		out = append(out, results...)
+		if err != nil {
+			partial, ok := err.(*PartialWriteError)
+			if !ok {
+				return out, err
+			}
+			failures = append(failures, partial.Failures...)
+		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].BucketID < out[j].BucketID })
+	if len(failures) > 0 {
+		return out, &PartialWriteError{Operation: "append log", Failures: failures}
+	}
 	return out, nil
 }
 
@@ -407,4 +471,78 @@ func isRetryableWriteRouteErr(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "fluss: no route for table=") ||
 		strings.Contains(msg, "fluss: leader ")
+}
+
+func splitBucketWriteFailures(partial *PartialWriteError) (map[string]BucketWriteError, error) {
+	retryable := make(map[string]BucketWriteError)
+	terminalFailures := make([]BucketWriteError, 0)
+	for _, failure := range partial.Failures {
+		if isRetryableWriteRouteErr(failure.Err) {
+			retryable[bucketFailureKey(failure.PartitionID, failure.BucketID)] = failure
+			continue
+		}
+		terminalFailures = append(terminalFailures, failure)
+	}
+	if len(terminalFailures) == 0 {
+		return retryable, nil
+	}
+	return retryable, &PartialWriteError{
+		Operation: partial.Operation,
+		Failures:  terminalFailures,
+	}
+}
+
+func bucketFailureKey(partitionID *int64, bucketID int32) string {
+	if partitionID == nil {
+		return fmt.Sprintf("nil/%d", bucketID)
+	}
+	return fmt.Sprintf("%d/%d", *partitionID, bucketID)
+}
+
+func filterBucketRecordBatchesByFailure(batches []BucketRecordBatch, failures map[string]BucketWriteError) []BucketRecordBatch {
+	filtered := make([]BucketRecordBatch, 0, len(batches))
+	for _, batch := range batches {
+		if _, ok := failures[bucketFailureKey(batch.PartitionID, batch.BucketID)]; ok {
+			filtered = append(filtered, batch)
+		}
+	}
+	return filtered
+}
+
+func mergeProduceResults(existing, current []ProduceResult) []ProduceResult {
+	index := make(map[string]int, len(existing))
+	out := append([]ProduceResult(nil), existing...)
+	for i, result := range out {
+		index[bucketFailureKey(result.PartitionID, result.BucketID)] = i
+	}
+	for _, result := range current {
+		key := bucketFailureKey(result.PartitionID, result.BucketID)
+		if i, ok := index[key]; ok {
+			out[i] = result
+			continue
+		}
+		index[key] = len(out)
+		out = append(out, result)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].BucketID < out[j].BucketID })
+	return out
+}
+
+func mergePutResults(existing, current []PutResult) []PutResult {
+	index := make(map[string]int, len(existing))
+	out := append([]PutResult(nil), existing...)
+	for i, result := range out {
+		index[bucketFailureKey(result.PartitionID, result.BucketID)] = i
+	}
+	for _, result := range current {
+		key := bucketFailureKey(result.PartitionID, result.BucketID)
+		if i, ok := index[key]; ok {
+			out[i] = result
+			continue
+		}
+		index[key] = len(out)
+		out = append(out, result)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].BucketID < out[j].BucketID })
+	return out
 }

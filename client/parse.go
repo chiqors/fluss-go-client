@@ -14,10 +14,8 @@ func parseProduceResults(msg proto.Message) ([]ProduceResult, error) {
 		return nil, fmt.Errorf("fluss: unexpected produce response type %T", msg)
 	}
 	out := make([]ProduceResult, 0, len(resp.GetBucketsResp()))
+	failures := make([]BucketWriteError, 0)
 	for _, item := range resp.GetBucketsResp() {
-		if err := bucketAPIError(item.GetErrorCode(), item.GetErrorMessage()); err != nil {
-			return nil, err
-		}
 		result := ProduceResult{
 			BucketID:   item.GetBucketId(),
 			BaseOffset: item.GetBaseOffset(),
@@ -26,7 +24,25 @@ func parseProduceResults(msg proto.Message) ([]ProduceResult, error) {
 			pid := item.GetPartitionId()
 			result.PartitionID = &pid
 		}
+		if item.ErrorCode != nil {
+			code := item.GetErrorCode()
+			result.ErrorCode = &code
+		}
+		if item.ErrorMessage != nil {
+			msg := item.GetErrorMessage()
+			result.ErrorMessage = &msg
+		}
+		if err := bucketAPIError(item.GetErrorCode(), item.GetErrorMessage()); err != nil {
+			failures = append(failures, BucketWriteError{
+				PartitionID: result.PartitionID,
+				BucketID:    result.BucketID,
+				Err:         err,
+			})
+		}
 		out = append(out, result)
+	}
+	if len(failures) > 0 {
+		return out, &PartialWriteError{Operation: "append log", Failures: failures}
 	}
 	return out, nil
 }
@@ -37,10 +53,8 @@ func parsePutResults(msg proto.Message) ([]PutResult, error) {
 		return nil, fmt.Errorf("fluss: unexpected put response type %T", msg)
 	}
 	out := make([]PutResult, 0, len(resp.GetBucketsResp()))
+	failures := make([]BucketWriteError, 0)
 	for _, item := range resp.GetBucketsResp() {
-		if err := bucketAPIError(item.GetErrorCode(), item.GetErrorMessage()); err != nil {
-			return nil, err
-		}
 		result := PutResult{
 			BucketID:     item.GetBucketId(),
 			LogEndOffset: item.GetLogEndOffset(),
@@ -49,7 +63,25 @@ func parsePutResults(msg proto.Message) ([]PutResult, error) {
 			pid := item.GetPartitionId()
 			result.PartitionID = &pid
 		}
+		if item.ErrorCode != nil {
+			code := item.GetErrorCode()
+			result.ErrorCode = &code
+		}
+		if item.ErrorMessage != nil {
+			msg := item.GetErrorMessage()
+			result.ErrorMessage = &msg
+		}
+		if err := bucketAPIError(item.GetErrorCode(), item.GetErrorMessage()); err != nil {
+			failures = append(failures, BucketWriteError{
+				PartitionID: result.PartitionID,
+				BucketID:    result.BucketID,
+				Err:         err,
+			})
+		}
 		out = append(out, result)
+	}
+	if len(failures) > 0 {
+		return out, &PartialWriteError{Operation: "upsert kv", Failures: failures}
 	}
 	return out, nil
 }

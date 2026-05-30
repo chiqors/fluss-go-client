@@ -2108,6 +2108,167 @@ func TestUpsertWriterFlushRetriesAfterMetadataRefresh(t *testing.T) {
 	}
 }
 
+func TestAppendWriterFlushReturnsPartialResultsOnNonRetryableFailure(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata, flusspb.ApiKey_ProduceLog)), nil
+	})
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, metadataResponseForBuckets(host, int32(port), TablePath{DatabaseName: "demo", TableName: "logs"}, 21, 2, 0, 1)), nil
+	})
+	srv.on(flusspb.ApiKey_ProduceLog, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		return mustMarshal(t, &flusspb.ProduceLogResponse{
+			BucketsResp: []*flusspb.PbProduceLogRespForBucket{
+				{BucketId: proto.Int32(0), BaseOffset: proto.Int64(50)},
+				{BucketId: proto.Int32(1), ErrorCode: proto.Int32(7), ErrorMessage: proto.String("table not exist")},
+			},
+		}), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	writer := cli.Table(TablePath{DatabaseName: "demo", TableName: "logs"}).NewAppendWriter(AppendOptions{
+		MaxBufferedBatches: 4,
+	})
+	if _, err := writer.Write(ctx, []BucketRecordBatch{
+		{BucketID: 0, Records: []byte("a")},
+		{BucketID: 1, Records: []byte("b")},
+	}); err != nil {
+		t.Fatalf("writer.Write() error = %v", err)
+	}
+
+	results, err := writer.Flush(ctx)
+	if err == nil {
+		t.Fatal("expected partial write error, got nil")
+	}
+	partial, ok := err.(*PartialWriteError)
+	if !ok {
+		t.Fatalf("expected PartialWriteError, got %T", err)
+	}
+	if len(partial.Failures) != 1 || partial.Failures[0].BucketID != 1 {
+		t.Fatalf("unexpected partial failures: %#v", partial.Failures)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results including failed bucket, got %#v", results)
+	}
+	if results[0].BucketID != 0 || results[0].BaseOffset != 50 {
+		t.Fatalf("unexpected successful result: %#v", results[0])
+	}
+	if results[1].ErrorCode == nil || *results[1].ErrorCode != 7 {
+		t.Fatalf("expected failed bucket error code in result, got %#v", results[1])
+	}
+}
+
+func TestAppendWriterFlushRetriesOnlyRetryableFailedBuckets(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	var metadataCalls int
+	var secondAttemptBuckets []int32
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata, flusspb.ApiKey_ProduceLog)), nil
+	})
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		metadataCalls++
+		return mustMarshal(t, metadataResponseForBuckets(host, int32(port), TablePath{DatabaseName: "demo", TableName: "logs"}, 21, 2, 0, 1)), nil
+	})
+
+	var produceCalls int
+	srv.on(flusspb.ApiKey_ProduceLog, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		produceCalls++
+		req := &flusspb.ProduceLogRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if produceCalls == 1 {
+			return mustMarshal(t, &flusspb.ProduceLogResponse{
+				BucketsResp: []*flusspb.PbProduceLogRespForBucket{
+					{BucketId: proto.Int32(0), BaseOffset: proto.Int64(60)},
+					{BucketId: proto.Int32(1), ErrorCode: proto.Int32(44), ErrorMessage: proto.String("leader not available")},
+				},
+			}), nil
+		}
+		for _, bucket := range req.GetBucketsReq() {
+			secondAttemptBuckets = append(secondAttemptBuckets, bucket.GetBucketId())
+		}
+		return mustMarshal(t, &flusspb.ProduceLogResponse{
+			BucketsResp: []*flusspb.PbProduceLogRespForBucket{
+				{BucketId: proto.Int32(1), BaseOffset: proto.Int64(61)},
+			},
+		}), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	writer := cli.Table(TablePath{DatabaseName: "demo", TableName: "logs"}).NewAppendWriter(AppendOptions{
+		MaxBufferedBatches: 4,
+	})
+	if _, err := writer.Write(ctx, []BucketRecordBatch{
+		{BucketID: 0, Records: []byte("a")},
+		{BucketID: 1, Records: []byte("b")},
+	}); err != nil {
+		t.Fatalf("writer.Write() error = %v", err)
+	}
+
+	results, err := writer.Flush(ctx)
+	if err != nil {
+		t.Fatalf("writer.Flush() error = %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 final results, got %#v", results)
+	}
+	if len(secondAttemptBuckets) != 1 || secondAttemptBuckets[0] != 1 {
+		t.Fatalf("expected retry of only bucket 1, got %v", secondAttemptBuckets)
+	}
+	if metadataCalls < 2 || produceCalls != 2 {
+		t.Fatalf("expected metadata refresh + retry, metadataCalls=%d produceCalls=%d", metadataCalls, produceCalls)
+	}
+}
+
 func TestPartialUpdateIndexedRowUsesTargetColumnsAndNullablePayload(t *testing.T) {
 	srv := newMockFlussServer(t)
 	defer srv.Close()

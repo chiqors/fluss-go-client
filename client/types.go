@@ -243,15 +243,37 @@ type UpsertOptions struct {
 }
 
 type ProduceResult struct {
-	PartitionID *int64
-	BucketID    int32
-	BaseOffset  int64
+	PartitionID  *int64
+	BucketID     int32
+	BaseOffset   int64
+	ErrorCode    *int32
+	ErrorMessage *string
 }
 
 type PutResult struct {
 	PartitionID  *int64
 	BucketID     int32
 	LogEndOffset int64
+	ErrorCode    *int32
+	ErrorMessage *string
+}
+
+type BucketWriteError struct {
+	PartitionID *int64
+	BucketID    int32
+	Err         error
+}
+
+type PartialWriteError struct {
+	Operation string
+	Failures  []BucketWriteError
+}
+
+func (e *PartialWriteError) Error() string {
+	if e == nil || len(e.Failures) == 0 {
+		return "fluss: partial write failure"
+	}
+	return e.Operation + ": partial failure"
 }
 
 type LookupBucketRequest struct {
