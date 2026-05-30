@@ -3,7 +3,7 @@
 Fluss has a rich set of features and native data types available to users. The tables below summarize what the upstream Java client supports today and what the Go client in this repo supports today.
 
 The current real-cluster support contract is exercised by the Fluss+Paimon demo under `demo/fluss-paimon`.
-That E2E harness is currently green for the implemented Go `client/` surface covering database/table/partition admin lifecycle, indexed log append + limit scan, Arrow log fetch + projection, all-types log round-trip, primary-key upsert + lookup, primary-key partial update, primary-key limit scan, primary-key delete, and prefix lookup against a real Fluss deployment, using the upstream Java client semantics as the reference for overlapping behaviors. The codebase also includes upstream-aligned snapshot admin APIs, but full primary-key snapshot batch scan is not currently part of the canonical real-cluster demo support contract.
+That E2E harness is currently green for the implemented Go `client/` surface covering database/table/partition admin lifecycle, indexed log append + limit scan, Arrow log fetch + projection, all-types log round-trip, primary-key upsert + lookup, primary-key partial update, primary-key limit scan, primary-key snapshot batch scan, primary-key delete, and prefix lookup against a real Fluss deployment, using the upstream Java client semantics as the reference for overlapping behaviors.
 
 Legend:
 
@@ -31,14 +31,16 @@ These operations live under the table append, scan, upsert, and lookup surfaces.
 | Primary Key | Prefix Lookup | ✔️ | ✔️ |
 | Primary Key | Typed Lookup | ✔️ | ✔️ |
 | Primary Key | Batch Scan with Limit | ✔️ | ✔️ |
-| Primary Key | Batch Scan (Snapshot) | ✔️ | ~ |
+| Primary Key | Batch Scan (Snapshot) | ✔️ | ✔️ |
 
 For more details, see [Table Overview](https://fluss.apache.org/docs/table-design/overview).
 
 Current note for primary-key tables:
 - the canonical real-cluster E2E now validates the Go client against Fluss `COMPACTED` KV table semantics for upsert, partial update, lookup, limit scan, delete, and prefix lookup
 - these flows are intentionally aligned to the overlapping upstream Java client behavior, then adapted to the Go-native public API surface
-- the Go client includes upstream-aligned snapshot admin metadata APIs and exploratory snapshot batch-scan work, but full local snapshot-file reading is deferred from the canonical support-contract demo for now because real-cluster snapshot reader portability still needs a cleaner implementation strategy
+- the Go client now exercises primary-key snapshot batch scan in the canonical Fluss+Paimon harness using the same upstream-aligned snapshot metadata flow plus local read-only snapshot iteration
+- the Go snapshot path now includes schema-id-aware remapping for older snapshot rows onto the requested target schema
+- real-cluster compatibility is proven for the current RustFS/Paimon demo path, and the built-in fetcher now supports both `s3://` and local `file://`/plain-path sources; broader snapshot-layout portability across additional filesystem backends and cluster variants still deserves follow-up validation
 
 Current note for log projection:
 - upstream/server behavior only supports column projection for `ARROW` log format

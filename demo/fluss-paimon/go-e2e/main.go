@@ -64,7 +64,17 @@ func main() {
 		},
 	}
 
-	cli, err := client.Dial(ctx, client.Config{Endpoints: []string{getenv("FLUSS_BOOTSTRAP", "coordinator-server:9123")}})
+	cli, err := client.Dial(ctx, client.Config{
+		Endpoints: []string{getenv("FLUSS_BOOTSTRAP", "coordinator-server:9123")},
+		SnapshotStorage: client.SnapshotStorageConfig{
+			S3Endpoint:  "rustfs:9000",
+			S3AccessKey: "flussadmin",
+			S3SecretKey: "flussadmin",
+			S3Region:    "us-east-1",
+			S3UseSSL:    false,
+			S3PathStyle: true,
+		},
+	})
 	if err != nil {
 		fatalf("dial fluss: %v", err)
 	}
@@ -100,6 +110,7 @@ func main() {
 		{section: "Data Operations", name: "PrimaryKeyUpsertAndLookup", run: runPrimaryKeyUpsertAndLookup},
 		{section: "Data Operations", name: "PrimaryKeyPartialUpdate", run: runPrimaryKeyPartialUpdate},
 		{section: "Data Operations", name: "PrimaryKeyLimitScan", run: runPrimaryKeyLimitScan},
+		{section: "Data Operations", name: "PrimaryKeySnapshotBatchScan", run: runPrimaryKeySnapshotBatchScan},
 		{section: "Data Operations", name: "PrimaryKeyDelete", run: runPrimaryKeyDelete},
 		{section: "Data Operations", name: "PrimaryKeyPrefixLookup", run: runPrimaryKeyPrefixLookup},
 	}
@@ -828,6 +839,44 @@ func runPrimaryKeyLimitScan(ctx context.Context, cli *client.Client, env environ
 	return nil
 }
 
+func runPrimaryKeySnapshotBatchScan(ctx context.Context, cli *client.Client, env environment) error {
+	schema := client.NewSchema(
+		client.Int64Type(),
+		client.StringType(),
+		client.StringType(),
+	)
+	fields := []string{"customer_id", "customer_name", "customer_tier"}
+	want := []decodedRow{
+		{fields: fields, values: []any{int64(42), "Ada Lovelace", "diamond"}},
+		{fields: fields, values: []any{int64(43), "Grace Hopper", "platinum"}},
+	}
+
+	snapshotID, err := waitForLatestKVSnapshot(ctx, cli, env.kvTable, 0)
+	if err != nil {
+		return fmt.Errorf("wait for kv snapshot: %w", err)
+	}
+
+	rows, err := cli.Table(env.kvTable).SnapshotScanRows(ctx, schema, client.SnapshotScanOptions{
+		BucketID:   0,
+		SnapshotID: &snapshotID,
+	})
+	if err != nil {
+		return fmt.Errorf("snapshot scan kv table: %w", err)
+	}
+
+	got := make([]decodedRow, 0, len(rows))
+	for _, row := range rows {
+		got = append(got, decodedRow{fields: fields, values: row})
+	}
+	if !sameDecodedRowSet(got, want) {
+		return fmt.Errorf("snapshot scan kv rows: got %v, want %v", formatDecodedRows(got), formatDecodedRows(want))
+	}
+	for i, row := range got {
+		fmt.Printf("SnapshotScanKV Row[%d]: %s\n", i, formatRow(row.fields, row.values))
+	}
+	return nil
+}
+
 func runPrimaryKeyPrefixLookup(ctx context.Context, cli *client.Client, env environment) error {
 	schema := client.NewSchema(
 		client.Int64Type(),
@@ -979,6 +1028,31 @@ func waitForTables(ctx context.Context, admin *client.AdminClient, database stri
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+func waitForLatestKVSnapshot(ctx context.Context, cli *client.Client, path client.TablePath, bucketID int32) (int64, error) {
+	deadline, ok := ctx.Deadline()
+	if ok {
+		fmt.Fprintf(os.Stderr, "waiting for kv snapshot until %s\n", deadline.Format(time.RFC3339))
+	}
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		snapshots, err := cli.Admin().GetLatestKvSnapshots(ctx, path, nil)
+		if err != nil {
+			return 0, err
+		}
+		if snapshotID := snapshots.SnapshotIDs[bucketID]; snapshotID != nil {
+			fmt.Printf("LatestKVSnapshot: bucket=%d snapshot_id=%d\n", bucketID, *snapshotID)
+			return *snapshotID, nil
+		}
+		fmt.Printf("WaitingForKVSnapshot: bucket=%d snapshot_id=<nil>\n", bucketID)
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
 		case <-ticker.C:
 		}
 	}

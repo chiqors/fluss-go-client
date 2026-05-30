@@ -428,22 +428,14 @@ func (t *TableClient) ScanIndexedRows(ctx context.Context, partitionID *int64, b
 // then local snapshot DB iteration. The current implementation is intentionally scoped to the
 // S3-compatible storage used by the real Fluss+Paimon demo environment.
 func (t *TableClient) SnapshotScanRows(ctx context.Context, schema Schema, opts SnapshotScanOptions) ([][]any, error) {
-	downloader, err := snapshot.NewDownloader(snapshot.StorageConfig{
-		S3Endpoint:       t.client.cfg.SnapshotStorage.S3Endpoint,
-		S3AccessKey:      t.client.cfg.SnapshotStorage.S3AccessKey,
-		S3SecretKey:      t.client.cfg.SnapshotStorage.S3SecretKey,
-		S3Region:         t.client.cfg.SnapshotStorage.S3Region,
-		S3UseSSL:         t.client.cfg.SnapshotStorage.S3UseSSL,
-		S3PathStyle:      t.client.cfg.SnapshotStorage.S3PathStyle,
-		S3BucketOverride: t.client.cfg.SnapshotStorage.S3BucketOverride,
-	})
+	fetcher, err := t.client.SnapshotFetcher()
 	if err != nil {
 		return nil, err
 	}
-	return t.snapshotScanRows(ctx, schema, opts, downloader.DownloadAll)
+	return t.snapshotScanRows(ctx, schema, opts, fetcher.FetchAll)
 }
 
-func (t *TableClient) snapshotScanRows(ctx context.Context, schema Schema, opts SnapshotScanOptions, download func(context.Context, []snapshot.RemoteFile) (string, error)) ([][]any, error) {
+func (t *TableClient) snapshotScanRows(ctx context.Context, schema Schema, opts SnapshotScanOptions, fetch func(context.Context, []snapshot.RemoteFile) (string, error)) ([][]any, error) {
 	info, err := t.ensureTableInfo(ctx)
 	if err != nil {
 		return nil, err
@@ -483,13 +475,18 @@ func (t *TableClient) snapshotScanRows(ctx context.Context, schema Schema, opts 
 			LocalFileName: file.LocalFileName,
 		})
 	}
-	localDir, err := download(ctx, files)
+	localDir, err := fetch(ctx, files)
 	if err != nil {
 		return nil, fmt.Errorf("fluss: snapshot scan rows: download snapshot files: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(localDir) }()
 
-	reader, err := snapshot.Open(localDir, map[int32]rowcodec.Schema{info.SchemaID: rowcodec.Schema(schema)}, indexed)
+	plans, loadPlan, err := t.snapshotDecodePlans(ctx, info.SchemaID, schema, opts)
+	if err != nil {
+		return nil, fmt.Errorf("fluss: snapshot scan rows: load schemas: %w", err)
+	}
+
+	reader, err := snapshot.Open(localDir, plans, loadPlan, indexed)
 	if err != nil {
 		return nil, fmt.Errorf("fluss: snapshot scan rows: open local snapshot: %w", err)
 	}
@@ -500,4 +497,50 @@ func (t *TableClient) snapshotScanRows(ctx context.Context, schema Schema, opts 
 		return nil, fmt.Errorf("fluss: snapshot scan rows: read local snapshot: %w", err)
 	}
 	return rows, nil
+}
+
+func (t *TableClient) snapshotDecodePlans(ctx context.Context, targetSchemaID int32, target Schema, opts SnapshotScanOptions) (map[int32]snapshot.DecodePlan, func(int32) (snapshot.DecodePlan, error), error) {
+	targetColumns := append([]string(nil), opts.TargetColumns...)
+	if len(targetColumns) == 0 {
+		tableSchema, err := t.Schema(ctx, &targetSchemaID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("get target schema %d: %w", targetSchemaID, err)
+		}
+		_, targetColumns, err = metadata.ParseSchema(tableSchema.JSON)
+		if err != nil {
+			return nil, nil, fmt.Errorf("parse target schema %d: %w", targetSchemaID, err)
+		}
+	}
+	if len(targetColumns) != len(target.Fields) {
+		return nil, nil, fmt.Errorf("target column count %d does not match target schema field count %d", len(targetColumns), len(target.Fields))
+	}
+
+	plans := map[int32]snapshot.DecodePlan{
+		targetSchemaID: {
+			DecodeSchema:  rowcodec.Schema(target),
+			TargetSchema:  rowcodec.Schema(target),
+			SourceColumns: append([]string(nil), targetColumns...),
+			TargetColumns: append([]string(nil), targetColumns...),
+		},
+	}
+	loadPlan := func(schemaID int32) (snapshot.DecodePlan, error) {
+		if schemaID == targetSchemaID {
+			return plans[targetSchemaID], nil
+		}
+		schemaInfo, err := t.Schema(ctx, &schemaID)
+		if err != nil {
+			return snapshot.DecodePlan{}, fmt.Errorf("get source schema %d: %w", schemaID, err)
+		}
+		sourceSchema, sourceColumns, err := metadata.ParseSchema(schemaInfo.JSON)
+		if err != nil {
+			return snapshot.DecodePlan{}, fmt.Errorf("parse source schema %d: %w", schemaID, err)
+		}
+		return snapshot.DecodePlan{
+			DecodeSchema:  sourceSchema,
+			TargetSchema:  rowcodec.Schema(target),
+			SourceColumns: append([]string(nil), sourceColumns...),
+			TargetColumns: append([]string(nil), targetColumns...),
+		}, nil
+	}
+	return plans, loadPlan, nil
 }

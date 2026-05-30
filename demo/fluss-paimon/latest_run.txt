@@ -1,4 +1,4 @@
-waiting for bootstrap tables until 2026-05-30T12:14:37Z
+waiting for bootstrap tables until 2026-05-30T15:16:25Z
 WaitingForTables: have=[e2e_orders e2e_all_types e2e_customers e2e_admin_partitions e2e_customer_orders e2e_orders_arrow] expected=[e2e_orders e2e_orders_arrow e2e_customers e2e_customer_orders e2e_all_types e2e_admin_partitions]
 [Admin] ListDatabases
 ListDatabases: names=0 summaries=1 resolved=[fluss]
@@ -7,7 +7,7 @@ ListDatabases: names=0 summaries=1 resolved=[fluss]
 DatabaseExists(fluss): true
 [PASS] Admin/DatabaseExists
 [Admin] GetDatabaseInfo
-GetDatabaseInfo(fluss): created=1780143051450 modified=1780143051450 json_bytes=36
+GetDatabaseInfo(fluss): created=1780153959393 modified=1780153959393 json_bytes=36
 [PASS] Admin/GetDatabaseInfo
 [Admin] CreateAndDropDatabase
 CreateDropDatabase: name=go_e2e_admin_db lifecycle_ok=true
@@ -81,6 +81,13 @@ PartialUpdateKV Lookup: {customer_id=42, customer_name=Ada Lovelace, customer_ti
 LimitScanKV Row[0]: {customer_id=42, customer_name=Ada Lovelace, customer_tier=diamond}
 LimitScanKV Row[1]: {customer_id=43, customer_name=Grace Hopper, customer_tier=platinum}
 [PASS] Data Operations/PrimaryKeyLimitScan
+[Data Operations] PrimaryKeySnapshotBatchScan
+waiting for kv snapshot until 2026-05-30T15:16:25Z
+WaitingForKVSnapshot: bucket=0 snapshot_id=<nil>
+LatestKVSnapshot: bucket=0 snapshot_id=0
+SnapshotScanKV Row[0]: {customer_id=42, customer_name=Ada Lovelace, customer_tier=diamond}
+SnapshotScanKV Row[1]: {customer_id=43, customer_name=Grace Hopper, customer_tier=platinum}
+[PASS] Data Operations/PrimaryKeySnapshotBatchScan
 [Data Operations] PrimaryKeyDelete
 DeleteKV: deleted customer_id=99 and lookup returned no row
 [PASS] Data Operations/PrimaryKeyDelete

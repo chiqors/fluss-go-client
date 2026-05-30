@@ -8,16 +8,15 @@ import (
 	"io"
 	"net"
 	"os"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
+	rockyardkv "github.com/aalhour/rockyardkv"
 	arrowcodec "github.com/chiqors/fluss-go-client/internal/codec/arrow"
 	rowcodec "github.com/chiqors/fluss-go-client/internal/codec/row"
 	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
 	"github.com/chiqors/fluss-go-client/internal/snapshot"
-	"github.com/cockroachdb/pebble"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -1146,6 +1145,7 @@ func TestSnapshotScanRows(t *testing.T) {
 			flusspb.ApiKey_GetMetadata,
 			flusspb.ApiKey_GetLatestKvSnapshots,
 			flusspb.ApiKey_GetKvSnapshotMetadata,
+			flusspb.ApiKey_GetTableSchema,
 		)), nil
 	})
 
@@ -1192,6 +1192,21 @@ func TestSnapshotScanRows(t *testing.T) {
 		}), nil
 	})
 
+	srv.on(flusspb.ApiKey_GetTableSchema, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.GetTableSchemaRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if req.GetSchemaId() != 7 {
+			return nil, fmt.Errorf("unexpected schema id %d", req.GetSchemaId())
+		}
+		return mustMarshal(t, &flusspb.GetTableSchemaResponse{
+			SchemaId:   proto.Int32(7),
+			SchemaJson: []byte(`{"columns":[{"name":"customer_id","type":"BIGINT"},{"name":"customer_name","type":"STRING"},{"name":"customer_tier","type":"STRING"}]}`),
+		}), nil
+	})
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -1201,10 +1216,12 @@ func TestSnapshotScanRows(t *testing.T) {
 	}
 	defer func() { _ = cli.Close() }()
 
-	localDir := filepath.Join(t.TempDir(), "db")
-	db, err := pebble.Open(localDir, &pebble.Options{})
+	localDir := t.TempDir()
+	opts := rockyardkv.DefaultOptions()
+	opts.CreateIfMissing = true
+	db, err := rockyardkv.Open(localDir, opts)
 	if err != nil {
-		t.Fatalf("pebble.Open() error = %v", err)
+		t.Fatalf("rockyardkv.Open() error = %v", err)
 	}
 	schema := NewSchema(Int64Type(), StringType(), StringType())
 	rowPayload, err := rowcodec.Row{Schema: rowcodec.Schema(schema), Values: []any{int64(42), "Ada Lovelace", "diamond"}}.EncodeCompacted()
@@ -1214,8 +1231,11 @@ func TestSnapshotScanRows(t *testing.T) {
 	value := make([]byte, 2, 2+len(rowPayload))
 	binary.LittleEndian.PutUint16(value[:2], uint16(7))
 	value = append(value, rowPayload...)
-	if err := db.Set([]byte("k1"), value, pebble.Sync); err != nil {
-		t.Fatalf("db.Set() error = %v", err)
+	if err := db.Put(nil, []byte("k1"), value); err != nil {
+		t.Fatalf("db.Put() error = %v", err)
+	}
+	if err := db.Flush(nil); err != nil {
+		t.Fatalf("db.Flush() error = %v", err)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatalf("db.Close() error = %v", err)
@@ -1224,7 +1244,7 @@ func TestSnapshotScanRows(t *testing.T) {
 	rows, err := cli.Table(TablePath{DatabaseName: "demo", TableName: "customers"}).snapshotScanRows(
 		ctx,
 		schema,
-		SnapshotScanOptions{BucketID: 0},
+		SnapshotScanOptions{BucketID: 0, TargetColumns: []string{"customer_id", "customer_name", "customer_tier"}},
 		func(context.Context, []snapshot.RemoteFile) (string, error) { return localDir, nil },
 	)
 	if err != nil {
@@ -1237,6 +1257,141 @@ func TestSnapshotScanRows(t *testing.T) {
 		t.Fatalf("unexpected row: %#v", rows[0])
 	}
 	_ = os.RemoveAll(localDir)
+}
+
+func TestSnapshotScanRowsSchemaEvolution(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(
+			flusspb.ApiKey_APIVersions,
+			flusspb.ApiKey_GetMetadata,
+			flusspb.ApiKey_GetLatestKvSnapshots,
+			flusspb.ApiKey_GetKvSnapshotMetadata,
+			flusspb.ApiKey_GetTableSchema,
+		)), nil
+	})
+
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, metadataResponseForSingleBucketWithJSON(host, int32(port), TablePath{DatabaseName: "demo", TableName: "customers"}, 51, 2, []byte(`{
+			"schema":{
+				"columns":[
+					{"name":"customer_id","type":"BIGINT"},
+					{"name":"customer_name","type":"STRING"},
+					{"name":"customer_tier","type":"STRING"}],
+				"primary_key":["customer_id"]
+			},
+			"properties":{"table.kv.format":"compacted"}
+		}`))), nil
+	})
+
+	srv.on(flusspb.ApiKey_GetLatestKvSnapshots, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, &flusspb.GetLatestKvSnapshotsResponse{
+			TableId: proto.Int64(51),
+			LatestSnapshots: []*flusspb.PbKvSnapshot{
+				{BucketId: proto.Int32(0), SnapshotId: proto.Int64(7), LogOffset: proto.Int64(101)},
+			},
+		}), nil
+	})
+
+	srv.on(flusspb.ApiKey_GetKvSnapshotMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, &flusspb.GetKvSnapshotMetadataResponse{
+			LogOffset: proto.Int64(101),
+			SnapshotFiles: []*flusspb.PbRemotePathAndLocalFile{
+				{RemotePath: proto.String("s3://fluss/snapshots/0001.sst"), LocalFileName: proto.String("0001.sst")},
+			},
+		}), nil
+	})
+
+	srv.on(flusspb.ApiKey_GetTableSchema, func(reqID int32, payload []byte) ([]byte, error) {
+		req := &flusspb.GetTableSchemaRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		switch req.GetSchemaId() {
+		case 1:
+			return mustMarshal(t, &flusspb.GetTableSchemaResponse{
+				SchemaId:   proto.Int32(1),
+				SchemaJson: []byte(`{"columns":[{"name":"customer_id","type":"BIGINT"},{"name":"customer_name","type":"STRING"}]}`),
+			}), nil
+		case 2:
+			return mustMarshal(t, &flusspb.GetTableSchemaResponse{
+				SchemaId:   proto.Int32(2),
+				SchemaJson: []byte(`{"columns":[{"name":"customer_id","type":"BIGINT"},{"name":"customer_name","type":"STRING"},{"name":"customer_tier","type":"STRING"}]}`),
+			}), nil
+		default:
+			return nil, fmt.Errorf("unexpected schema id %d", req.GetSchemaId())
+		}
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	localDir := t.TempDir()
+	opts := rockyardkv.DefaultOptions()
+	opts.CreateIfMissing = true
+	db, err := rockyardkv.Open(localDir, opts)
+	if err != nil {
+		t.Fatalf("rockyardkv.Open() error = %v", err)
+	}
+	oldSchema := NewSchema(Int64Type(), StringType())
+	rowPayload, err := rowcodec.Row{Schema: rowcodec.Schema(oldSchema), Values: []any{int64(42), "Ada Lovelace"}}.EncodeCompacted()
+	if err != nil {
+		t.Fatalf("EncodeCompacted() error = %v", err)
+	}
+	value := make([]byte, 2, 2+len(rowPayload))
+	binary.LittleEndian.PutUint16(value[:2], uint16(1))
+	value = append(value, rowPayload...)
+	if err := db.Put(nil, []byte("k1"), value); err != nil {
+		t.Fatalf("db.Put() error = %v", err)
+	}
+	if err := db.Flush(nil); err != nil {
+		t.Fatalf("db.Flush() error = %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("db.Close() error = %v", err)
+	}
+
+	newSchema := NewSchema(Int64Type(), StringType(), StringType())
+	rows, err := cli.Table(TablePath{DatabaseName: "demo", TableName: "customers"}).snapshotScanRows(
+		ctx,
+		newSchema,
+		SnapshotScanOptions{BucketID: 0, TargetColumns: []string{"customer_id", "customer_name", "customer_tier"}},
+		func(context.Context, []snapshot.RemoteFile) (string, error) { return localDir, nil },
+	)
+	if err != nil {
+		t.Fatalf("snapshotScanRows() error = %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("row count = %d, want 1", len(rows))
+	}
+	if rows[0][0] != int64(42) || rows[0][1] != "Ada Lovelace" || rows[0][2] != nil {
+		t.Fatalf("unexpected row: %#v", rows[0])
+	}
 }
 
 func TestFetchLogWithProjection(t *testing.T) {

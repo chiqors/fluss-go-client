@@ -36,7 +36,7 @@ For the detailed support matrix, see [CLIENT_SUPPORT_MATRIX.md](./CLIENT_SUPPORT
 Important gaps still remain:
 
 - production-grade scanner abstractions
-- full snapshot batch-scan parity in the canonical real-cluster demo
+- broader snapshot batch-scan portability across additional filesystem backends and cluster layouts beyond the current canonical real-cluster demo path
 - hardened retry/reconnect behavior under failure
 - secured-cluster auth and token workflows beyond the basic hook surface
 - metrics and tracing hooks

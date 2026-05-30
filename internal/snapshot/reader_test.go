@@ -2,19 +2,20 @@ package snapshot
 
 import (
 	"encoding/binary"
-	"path/filepath"
 	"testing"
 
+	rockyardkv "github.com/aalhour/rockyardkv"
 	rowcodec "github.com/chiqors/fluss-go-client/internal/codec/row"
-	"github.com/cockroachdb/pebble"
 )
 
 func TestReaderReadAllCompactedRows(t *testing.T) {
 	dir := t.TempDir()
 
-	db, err := pebble.Open(filepath.Join(dir, "db"), &pebble.Options{})
+	opts := rockyardkv.DefaultOptions()
+	opts.CreateIfMissing = true
+	db, err := rockyardkv.Open(dir, opts)
 	if err != nil {
-		t.Fatalf("pebble.Open() error = %v", err)
+		t.Fatalf("rockyardkv.Open() error = %v", err)
 	}
 
 	schema := rowcodec.NewSchema(rowcodec.Int64Type(), rowcodec.StringType(), rowcodec.StringType())
@@ -30,19 +31,27 @@ func TestReaderReadAllCompactedRows(t *testing.T) {
 		return out
 	}
 
-	if err := db.Set([]byte("k1"), buildValue(1, []any{int64(42), "Ada Lovelace", "diamond"}), pebble.Sync); err != nil {
-		t.Fatalf("db.Set(k1) error = %v", err)
+	if err := db.Put(nil, []byte("k1"), buildValue(1, []any{int64(42), "Ada Lovelace", "diamond"})); err != nil {
+		t.Fatalf("db.Put(k1) error = %v", err)
 	}
-	if err := db.Set([]byte("k2"), buildValue(1, []any{int64(43), "Grace Hopper", "platinum"}), pebble.Sync); err != nil {
-		t.Fatalf("db.Set(k2) error = %v", err)
+	if err := db.Put(nil, []byte("k2"), buildValue(1, []any{int64(43), "Grace Hopper", "platinum"})); err != nil {
+		t.Fatalf("db.Put(k2) error = %v", err)
+	}
+	if err := db.Flush(nil); err != nil {
+		t.Fatalf("db.Flush() error = %v", err)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatalf("db.Close() error = %v", err)
 	}
 
-	reader, err := Open(filepath.Join(dir, "db"), map[int32]rowcodec.Schema{
-		1: schema,
-	}, false)
+	reader, err := Open(dir, map[int32]DecodePlan{
+		1: {
+			DecodeSchema:  schema,
+			TargetSchema:  schema,
+			SourceColumns: []string{"customer_id", "customer_name", "customer_tier"},
+			TargetColumns: []string{"customer_id", "customer_name", "customer_tier"},
+		},
+	}, nil, false)
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}

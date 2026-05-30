@@ -207,6 +207,7 @@ type SnapshotScanOptions struct {
 	PartitionID   *int64
 	BucketID      int32
 	SnapshotID    *int64
+	TargetColumns []string
 }
 
 type LakeSnapshotBucket struct {

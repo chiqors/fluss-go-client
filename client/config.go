@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/chiqors/fluss-go-client/internal/auth"
+	"github.com/chiqors/fluss-go-client/internal/snapshot"
 )
 
 type SnapshotStorageConfig struct {
@@ -26,6 +27,7 @@ type Config struct {
 	Authenticator         auth.Authenticator
 	Dialer                *net.Dialer
 	SnapshotStorage       SnapshotStorageConfig
+	SnapshotFetcher       snapshot.Fetcher
 }
 
 func (c Config) withDefaults() Config {
