@@ -3,8 +3,10 @@ package client
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	rowcodec "github.com/chiqors/fluss-go-client/internal/codec/row"
+	"github.com/chiqors/fluss-go-client/internal/metadata"
 )
 
 // AppendIndexedRow encodes a single row using the indexed row layout and appends it to a log table.
@@ -26,7 +28,15 @@ func (t *TableClient) UpsertIndexedRow(ctx context.Context, bucketID int32, row 
 	if err != nil {
 		return nil, err
 	}
-	payload, err := rowcodec.EncodeKvRecordBatch(row.Schema, row.Values, rowcodec.KvBatchOptions{SchemaID: info.SchemaID, Indexed: true})
+	columnNames, _, primaryKeys, _, err := metadata.ParseTableDescriptor(info.JSON)
+	if err != nil {
+		return nil, fmt.Errorf("fluss: parse table keys: %w", err)
+	}
+	keyColumns, err := keyColumnsByName(columnNames, primaryKeys)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := rowcodec.EncodeKvRecordBatch(row.Schema, row.Values, rowcodec.KvBatchOptions{SchemaID: info.SchemaID, Indexed: true, KeyColumns: keyColumns})
 	if err != nil {
 		return nil, err
 	}
@@ -34,6 +44,27 @@ func (t *TableClient) UpsertIndexedRow(ctx context.Context, bucketID int32, row 
 		targetColumns = []int32{}
 	}
 	return t.UpsertKV(ctx, -1, 15000, targetColumns, nil, []BucketRecordBatch{{BucketID: bucketID, Records: payload}})
+}
+
+func keyColumnsByName(columnNames []string, keyNames []string) ([]int, error) {
+	if len(keyNames) == 0 {
+		return nil, nil
+	}
+	columns := make([]int, 0, len(keyNames))
+	for _, keyName := range keyNames {
+		idx := -1
+		for i, columnName := range columnNames {
+			if columnName == keyName {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return nil, fmt.Errorf("fluss: key column %q not found in table schema %s", keyName, strings.Join(columnNames, ","))
+		}
+		columns = append(columns, idx)
+	}
+	return columns, nil
 }
 
 // DecodeIndexedRowPayload decodes an indexed row payload back into field values.

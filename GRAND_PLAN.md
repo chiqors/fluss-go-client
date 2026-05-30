@@ -58,6 +58,10 @@ Success means a Go team can:
 
 ## Current Status
 
+### Progress Ledger
+
+- 2026-05-30: validated the Go demo against the real Fluss/Paimon stack, including prefix lookup round-trip on `e2e_customer_orders`; updated the demo docs and support matrix to match the current behavior.
+
 ### Versioning policy
 
 - [x] Public Go module versioning should start at `v0.1.0`
@@ -73,7 +77,7 @@ Success means a Go team can:
 - [x] Metadata cache and leader routing foundation
 - [x] Admin metadata calls for databases, tables, schema, and partitions
 - [x] Raw table operations for append, upsert, lookup, prefix lookup, fetch log, limit scan, and KV scan
-- [x] Demo E2E now exercises append, upsert, limit scan, KV lookup, and Java-semantic prefix lookup round-trips against a real cluster
+- [x] Demo E2E now exercises append, upsert, limit scan, KV lookup, and prefix lookup round-trips against a real cluster
 - [x] Unit and mock-style integration coverage for the current client surface
 - [x] Containerized Fluss/Paimon smoke-test demo at [demo/fluss-paimon/README.md](./demo/fluss-paimon/README.md)
 
@@ -82,6 +86,7 @@ Success means a Go team can:
 - [x] `go test ./...`
 - [x] `go build ./...`
 - [x] Docker Compose E2E smoke test that boots Fluss + Flink/Paimon and validates direct Go client access
+- [x] Docker Compose E2E smoke test now validates prefix lookup against the real cluster
 
 ### Not production-ready yet
 
@@ -134,7 +139,7 @@ This Go client should pursue parity in layers rather than trying to clone every 
 - [~] Raw table data operations: partly present, still low-level
 - [ ] Writer subsystem parity
 - [ ] Scanner subsystem parity
-- [ ] Lookup ergonomics parity
+- [x] Lookup ergonomics parity
 - [ ] Typed mapping parity
 - [ ] Metrics parity
 - [ ] Security token parity
@@ -278,8 +283,8 @@ Goal: move from raw RPC operations to usable production writers.
 - [x] Raw upsert RPC
 - [ ] Raw delete convenience API audit
 - [ ] Schema-aware record-batch builders
-- [ ] Log write batch encoder
-- [ ] KV write batch encoder
+- [x] Log write batch encoder
+- [x] KV write batch encoder
 
 ### Writer APIs
 
@@ -343,7 +348,7 @@ Goal: make primary-key lookups and direct reads ergonomic.
 ### Tests
 
 - [ ] lookup E2E
-- [ ] prefix lookup E2E
+- [x] prefix lookup E2E
 - [ ] limit scan E2E with asserted records
 - [ ] KV scan pagination/session E2E
 - [ ] scanner close/cancel tests
@@ -523,7 +528,7 @@ Exit criteria:
 - [x] Docker Compose smoke test for direct client connectivity and schema access
 - [ ] append then fetch/scan E2E
 - [ ] upsert then lookup E2E
-- [ ] prefix lookup E2E
+- [x] prefix lookup E2E
 - [ ] KV scan lifecycle E2E
 - [ ] lake-enabled read-path E2E if supported in v1
 

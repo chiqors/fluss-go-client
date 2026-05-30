@@ -120,36 +120,6 @@ func main() {
 		fmt.Printf("UpsertKV[%d]: bucket=%d log_end_offset=%d\n", i, putResult[0].BucketID, putResult[0].LogEndOffset)
 	}
 
-	prefixSchema := rowcodec.NewSchema(rowcodec.Int64Type(), rowcodec.StringType(), rowcodec.Int64Type(), rowcodec.StringType())
-	prefixRows := []rowcodec.Row{}
-	prefixPayloads := [][]byte{}
-	for _, values := range [][]any{
-		{int64(1), "aaaaaaaaa", int64(9001), "pending"},
-		{int64(1), "aaaaaaaaa", int64(9002), "packed"},
-		{int64(2), "aaaaaaaaa", int64(9003), "shipped"},
-	} {
-		row, err := rowcodec.NewRow(prefixSchema, values...)
-		if err != nil {
-			fatalf("build prefix row: %v", err)
-		}
-		prefixRows = append(prefixRows, row)
-	}
-	for i, row := range prefixRows {
-		putResult, err := cli.Table(prefixPath).UpsertIndexedRow(ctx, 0, row, []int32{0, 1, 2})
-		if err != nil {
-			fatalf("upsert prefix row %d: %v", i, err)
-		}
-		if len(putResult) != 1 {
-			fatalf("upsert prefix result %d: unexpected result count %d", i, len(putResult))
-		}
-		fmt.Printf("UpsertPrefix[%d]: bucket=%d log_end_offset=%d\n", i, putResult[0].BucketID, putResult[0].LogEndOffset)
-		payload, err := row.EncodeLookupKey(0, 1)
-		if err != nil {
-			fatalf("encode prefix key %d: %v", i, err)
-		}
-		prefixPayloads = append(prefixPayloads, payload)
-	}
-
 	// LimitScan should now have real payload
 	limitResult, err := cli.Table(logPath).LimitScan(ctx, nil, 0, 10)
 	if err != nil {
@@ -199,6 +169,36 @@ func main() {
 		fmt.Printf("LookupKV Row[%d]: %s\n", i, formatRow([]string{"customer_id", "customer_name", "customer_tier"}, decodedKV))
 	}
 
+	prefixSchema := rowcodec.NewSchema(rowcodec.Int64Type(), rowcodec.StringType(), rowcodec.Int64Type(), rowcodec.StringType())
+	prefixRows := []rowcodec.Row{}
+	prefixPayloads := [][]byte{}
+	for _, values := range [][]any{
+		{int64(1), "aaaaaaaaa", int64(9001), "pending"},
+		{int64(1), "aaaaaaaaa", int64(9002), "packed"},
+		{int64(2), "aaaaaaaaa", int64(9003), "shipped"},
+	} {
+		row, err := rowcodec.NewRow(prefixSchema, values...)
+		if err != nil {
+			fatalf("build prefix row: %v", err)
+		}
+		prefixRows = append(prefixRows, row)
+	}
+	for i, row := range prefixRows {
+		putResult, err := cli.Table(prefixPath).UpsertIndexedRow(ctx, 0, row, []int32{0, 1, 2, 3})
+		if err != nil {
+			fatalf("upsert prefix row %d: %v", i, err)
+		}
+		if len(putResult) != 1 {
+			fatalf("upsert prefix result %d: unexpected result count %d", i, len(putResult))
+		}
+		fmt.Printf("UpsertPrefix[%d]: bucket=%d log_end_offset=%d\n", i, putResult[0].BucketID, putResult[0].LogEndOffset)
+		payload, err := row.EncodeLookupKey(0, 1)
+		if err != nil {
+			fatalf("encode prefix key %d: %v", i, err)
+		}
+		prefixPayloads = append(prefixPayloads, payload)
+	}
+
 	prefixLookupReq := client.LookupBucketRequest{BucketID: 0, Keys: [][]byte{prefixPayloads[0]}}
 	prefixLookupResult, err := cli.Table(prefixPath).PrefixLookup(ctx, []client.LookupBucketRequest{prefixLookupReq})
 	if err != nil {
@@ -207,8 +207,8 @@ func main() {
 	if len(prefixLookupResult) != 1 || len(prefixLookupResult[0].Values) != 1 {
 		fatalf("prefix lookup: unexpected result %#v", prefixLookupResult)
 	}
-	if len(prefixLookupResult[0].Values[0]) != len(prefixRows[:2]) {
-		fatalf("prefix lookup: expected %d matches, got %#v", len(prefixRows[:2]), prefixLookupResult[0].Values[0])
+	if len(prefixLookupResult[0].Values[0]) != 2 {
+		fatalf("prefix lookup: expected two matches, got %#v", prefixLookupResult[0].Values[0])
 	}
 	for i, payload := range prefixLookupResult[0].Values[0] {
 		decodedPrefix, err := client.DecodeIndexedLookupValuePayload(prefixSchema, payload)

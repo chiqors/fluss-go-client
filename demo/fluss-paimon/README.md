@@ -44,12 +44,12 @@ docker compose -f demo/fluss-paimon/docker-compose.yml down -v
 
 ## What the bootstrap creates
 
-The SQL bootstrap creates a Fluss catalog plus two simple tables:
+The SQL bootstrap creates a Fluss catalog plus three simple tables:
 
 - database: `fluss`
 - log table: `e2e_orders`
 - primary-key table: `e2e_customers`
-- composite primary-key table with prefix lookup coverage: `e2e_customer_orders`
+- prefix-lookup table: `e2e_customer_orders`
 
 The bootstrap intentionally stops after schema creation. The demo is focused on proving that the
 Go SDK can connect, inspect metadata, and exercise read-path entry points without depending on a
@@ -62,15 +62,14 @@ The Go service then:
 - validates database and table existence checks
 - fetches table metadata and schema for both tables
 - seeds one indexed log row and one indexed KV row through the Go client
-- seeds a composite-key primary-key table whose bucket key is a prefix of the physical primary key
-- validates partition-info listing on the non-partitioned tables
+- validates table metadata for the bootstrap tables
 - runs a real `LimitScan` against the log table
 - performs a KV lookup against the primary-key table and verifies the stored row round-trip
-- performs a prefix lookup against the composite primary-key table using the bucket-key prefix and verifies the row round-trip
+- performs a prefix lookup against the prefix-key table and verifies the returned rows round-trip
 - fails the container if any of those paths break against the real Fluss cluster
 
-This demo currently validates admin, metadata, write, log-table scan entry, KV lookup round-trip,
-and prefix lookup round-trip against a real cluster.
+This demo currently validates admin, metadata, write, log-table scan entry, KV lookup, and prefix
+lookup round-trip against a real cluster.
 
 ## Endpoints
 

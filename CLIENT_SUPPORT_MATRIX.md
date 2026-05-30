@@ -25,13 +25,13 @@ These operations live under the table append, scan, upsert, and lookup surfaces.
 | Primary Key | Typed Upsert | ✔️ |  |
 | Primary Key | Delete | ✔️ | ✔️ |
 | Primary Key | Lookup | ✔️ | ✔️ |
-| Primary Key | Prefix Lookup | ✔️ | ~ |
+| Primary Key | Prefix Lookup | ✔️ | ✔️ |
 | Primary Key | Typed Lookup | ✔️ |  |
 | Primary Key | Batch Scan with Limit | ✔️ |  |
 | Primary Key | Batch Scan (Snapshot) | ✔️ |  |
 
 :::tip
-For more details, see [Table Overview](/table-design/overview.md).
+For more details, see [Table Overview](https://fluss.apache.org/docs/table-design/data-types/).
 :::
 
 ## Data Types

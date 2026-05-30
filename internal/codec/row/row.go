@@ -23,8 +23,9 @@ type LogBatchOptions struct {
 }
 
 type KvBatchOptions struct {
-	SchemaID int32
-	Indexed  bool
+	SchemaID   int32
+	Indexed    bool
+	KeyColumns []int
 }
 
 type Value struct {
@@ -76,7 +77,7 @@ func EncodeLogRecordBatch(schema Schema, values []any, opts LogBatchOptions) ([]
 }
 
 func EncodeKvRecordBatch(schema Schema, values []any, opts KvBatchOptions) ([]byte, error) {
-	recordPayload, err := encodeKvRecord(schema, values, opts.Indexed)
+	recordPayload, err := encodeKvRecord(schema, values, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -198,15 +199,23 @@ func decodeLogRecords(schema Schema, payload []byte) ([][]any, error) {
 	return rows, nil
 }
 
-func encodeKvRecord(schema Schema, values []any, indexed bool) ([]byte, error) {
+func encodeKvRecord(schema Schema, values []any, opts KvBatchOptions) ([]byte, error) {
 	if len(schema.Fields) == 0 {
 		return nil, fmt.Errorf("rowcodec: kv schema has no fields")
 	}
-	keyPayload, err := encodeKvKey(schema.Fields[0], values[0], indexed)
+	row, err := NewRow(schema, values...)
 	if err != nil {
 		return nil, err
 	}
-	rowPayload, err := encodeRow(schema, values, indexed)
+	keyColumns := opts.KeyColumns
+	if len(keyColumns) == 0 {
+		keyColumns = []int{0}
+	}
+	keyPayload, err := row.EncodeLookupKey(keyColumns...)
+	if err != nil {
+		return nil, err
+	}
+	rowPayload, err := encodeRow(schema, values, opts.Indexed)
 	if err != nil {
 		return nil, err
 	}
@@ -291,13 +300,19 @@ func encodeCompactedKeyValue(field FieldType, value any) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return append([]byte(nil), v...), nil
+		out := make([]byte, 0, 4+len(v))
+		out = binary.LittleEndian.AppendUint32(out, uint32(len(v)))
+		out = append(out, v...)
+		return out, nil
 	case TypeBytes:
 		v, err := asBytes(value)
 		if err != nil {
 			return nil, err
 		}
-		return append([]byte(nil), v...), nil
+		out := make([]byte, 0, 4+len(v))
+		out = binary.LittleEndian.AppendUint32(out, uint32(len(v)))
+		out = append(out, v...)
+		return out, nil
 	default:
 		return nil, fmt.Errorf("data: unsupported lookup key type %q", field.Kind)
 	}
@@ -435,37 +450,6 @@ func decodeKvBatch(payload []byte) (int32, []byte, error) {
 		return 0, nil, fmt.Errorf("data: invalid kv batch crc")
 	}
 	return int32(binary.LittleEndian.Uint16(payload[9:11])), payload[kvHeaderSize:], nil
-}
-
-func encodeKvKey(field FieldType, value any, indexed bool) ([]byte, error) {
-	if value == nil {
-		return nil, fmt.Errorf("data: kv primary key cannot be nil")
-	}
-	if indexed {
-		switch field.Kind {
-		case TypeInt32:
-			v, err := asInt32(value)
-			if err != nil {
-				return nil, err
-			}
-			return encodeVarint32(v), nil
-		case TypeInt64:
-			v, err := asInt64(value)
-			if err != nil {
-				return nil, err
-			}
-			return encodeVarint64(v), nil
-		case TypeString:
-			v, err := asString(value)
-			if err != nil {
-				return nil, err
-			}
-			return append([]byte(nil), v...), nil
-		default:
-			return nil, fmt.Errorf("data: unsupported kv key type %q", field.Kind)
-		}
-	}
-	return encodeLookupValue(field, value)
 }
 
 func decodeRow(schema Schema, payload []byte, indexed bool) ([]any, error) {
