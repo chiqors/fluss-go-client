@@ -44,10 +44,11 @@ docker compose -f demo/fluss-paimon/docker-compose.yml down -v
 
 ## What the bootstrap creates
 
-The SQL bootstrap creates a Fluss catalog plus three simple tables:
+The SQL bootstrap creates a Fluss catalog plus focused support-contract tables:
 
 - database: `fluss`
-- log table: `e2e_orders`
+- indexed log table: `e2e_orders`
+- Arrow log table: `e2e_orders_arrow` (projection-focused, configured with Arrow compression disabled for deterministic interoperability coverage)
 - primary-key table: `e2e_customers`
 - prefix-lookup table: `e2e_customer_orders`
 - all-types log table: `e2e_all_types`
@@ -62,6 +63,7 @@ The Go service then runs a matrix-style feature harness:
 - validates database existence checks
 - fetches table metadata and schema for the bootstrap tables
 - appends indexed log rows and verifies log `LimitScan` returns the latest rows, following the upstream Java client contract
+- appends Arrow log rows, fetches them back, and verifies column projection through `FetchLogWithOptions(...)` against a real `ARROW` log table
 - appends and scans a dedicated all-types log row covering scalar, temporal, decimal, and nested `ARRAY/MAP/ROW` codec support
 - upserts indexed primary-key rows and verifies KV lookup round-trips
 - deletes a primary-key row and verifies lookup returns no value

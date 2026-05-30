@@ -19,6 +19,7 @@ type featureCase struct {
 type environment struct {
 	database    string
 	logTable    client.TablePath
+	arrowTable  client.TablePath
 	kvTable     client.TablePath
 	prefixTable client.TablePath
 	typesTable  client.TablePath
@@ -39,6 +40,10 @@ func main() {
 		logTable: client.TablePath{
 			DatabaseName: database,
 			TableName:    getenv("FLUSS_LOG_TABLE", "e2e_orders"),
+		},
+		arrowTable: client.TablePath{
+			DatabaseName: database,
+			TableName:    getenv("FLUSS_ARROW_LOG_TABLE", "e2e_orders_arrow"),
 		},
 		kvTable: client.TablePath{
 			DatabaseName: database,
@@ -63,6 +68,7 @@ func main() {
 	admin := cli.Admin()
 	if err := waitForTables(ctx, admin, env.database, []string{
 		env.logTable.TableName,
+		env.arrowTable.TableName,
 		env.kvTable.TableName,
 		env.prefixTable.TableName,
 		env.typesTable.TableName,
@@ -77,6 +83,7 @@ func main() {
 		{section: "Admin", name: "GetTableInfo", run: runGetTableInfo},
 		{section: "Admin", name: "GetTableSchema", run: runGetTableSchema},
 		{section: "Data Operations", name: "LogAppendAndLimitScan", run: runLogAppendAndLimitScan},
+		{section: "Data Operations", name: "ArrowLogAppendFetchAndProjection", run: runArrowLogAppendFetchAndProjection},
 		{section: "Data Operations", name: "AllTypesAppendAndLimitScan", run: runAllTypesAppendAndLimitScan},
 		{section: "Data Operations", name: "PrimaryKeyUpsertAndLookup", run: runPrimaryKeyUpsertAndLookup},
 		{section: "Data Operations", name: "PrimaryKeyLimitScan", run: runPrimaryKeyLimitScan},
@@ -122,7 +129,7 @@ func runListTables(ctx context.Context, cli *client.Client, env environment) err
 		return fmt.Errorf("list tables: %w", err)
 	}
 	sort.Strings(tables)
-	required := []string{env.logTable.TableName, env.kvTable.TableName, env.prefixTable.TableName}
+	required := []string{env.logTable.TableName, env.arrowTable.TableName, env.kvTable.TableName, env.prefixTable.TableName, env.typesTable.TableName}
 	for _, name := range required {
 		if !containsString(tables, name) {
 			return fmt.Errorf("list tables: missing %q in %v", name, tables)
@@ -133,7 +140,7 @@ func runListTables(ctx context.Context, cli *client.Client, env environment) err
 }
 
 func runGetTableInfo(ctx context.Context, cli *client.Client, env environment) error {
-	for _, path := range []client.TablePath{env.logTable, env.kvTable, env.prefixTable, env.typesTable} {
+	for _, path := range []client.TablePath{env.logTable, env.arrowTable, env.kvTable, env.prefixTable, env.typesTable} {
 		info, err := cli.Table(path).Info(ctx)
 		if err != nil {
 			return fmt.Errorf("table %s.%s info: %w", path.DatabaseName, path.TableName, err)
@@ -150,7 +157,7 @@ func runGetTableInfo(ctx context.Context, cli *client.Client, env environment) e
 }
 
 func runGetTableSchema(ctx context.Context, cli *client.Client, env environment) error {
-	for _, path := range []client.TablePath{env.logTable, env.kvTable, env.prefixTable, env.typesTable} {
+	for _, path := range []client.TablePath{env.logTable, env.arrowTable, env.kvTable, env.prefixTable, env.typesTable} {
 		schema, err := cli.Table(path).Schema(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("table %s.%s schema: %w", path.DatabaseName, path.TableName, err)
@@ -207,6 +214,91 @@ func runLogAppendAndLimitScan(ctx context.Context, cli *client.Client, env envir
 			return fmt.Errorf("limit scan log row %d: got %v, want %v", i, decoded[i], rows[i].Values)
 		}
 		fmt.Printf("LimitScanLog Row[%d]: %s\n", i, formatRow(fields, decoded[i]))
+	}
+	return nil
+}
+
+func runArrowLogAppendFetchAndProjection(ctx context.Context, cli *client.Client, env environment) error {
+	schema := client.NewSchema(
+		client.Int64Type(),
+		client.Int32Type(),
+		client.Float64Type(),
+		client.StringType(),
+	)
+	projectedSchema := client.NewSchema(
+		client.Int64Type(),
+		client.StringType(),
+	)
+	fields := []string{"order_id", "customer_id", "amount", "status"}
+	projectedFields := []string{"order_id", "status"}
+	rows := mustRows(schema, [][]any{
+		{int64(4001), int32(201), 11.25, "created"},
+		{int64(4002), int32(202), 22.50, "packed"},
+	})
+
+	result, err := cli.Table(env.arrowTable).AppendArrowRows(ctx, 0, rows)
+	if err != nil {
+		return fmt.Errorf("append arrow rows: %w", err)
+	}
+	if len(result) != 1 {
+		return fmt.Errorf("append arrow rows: unexpected result count %d", len(result))
+	}
+	fmt.Printf("AppendArrowLog: bucket=%d base_offset=%d rows=%d\n", result[0].BucketID, result[0].BaseOffset, len(rows))
+
+	fetched, err := cli.Table(env.arrowTable).FetchLog(ctx, -1, 4096, nil, nil, []client.FetchBucketRequest{{
+		BucketID:      0,
+		FetchOffset:   result[0].BaseOffset,
+		MaxFetchBytes: 4096,
+	}})
+	if err != nil {
+		return fmt.Errorf("fetch arrow log rows: %w", err)
+	}
+	if len(fetched) != 1 {
+		return fmt.Errorf("fetch arrow log rows: unexpected bucket count %d", len(fetched))
+	}
+	decoded, err := client.DecodeArrowLogBatchRows(schema, fetched[0].Records)
+	if err != nil {
+		return fmt.Errorf("decode fetched arrow log rows: %w", err)
+	}
+	if len(decoded) < len(rows) {
+		return fmt.Errorf("fetch arrow log rows: got %d rows, want at least %d", len(decoded), len(rows))
+	}
+	decoded = decoded[:len(rows)]
+	for i := range rows {
+		if !rowsEqual(decoded[i], rows[i].Values) {
+			return fmt.Errorf("fetch arrow row %d: got %v, want %v", i, decoded[i], rows[i].Values)
+		}
+		fmt.Printf("FetchArrowLog Row[%d]: %s\n", i, formatRow(fields, decoded[i]))
+	}
+
+	projected, err := cli.Table(env.arrowTable).FetchLogWithOptions(ctx, -1, 4096, nil, nil, []client.FetchBucketRequest{{
+		BucketID:      0,
+		FetchOffset:   result[0].BaseOffset,
+		MaxFetchBytes: 4096,
+	}}, client.FetchLogOptions{ProjectedFields: []int32{0, 3}})
+	if err != nil {
+		return fmt.Errorf("fetch projected arrow log rows: %w", err)
+	}
+	if len(projected) != 1 {
+		return fmt.Errorf("fetch projected arrow log rows: unexpected bucket count %d", len(projected))
+	}
+	projectedRows, err := client.DecodeProjectedArrowLogBatchRows(projectedSchema, projected[0].Records)
+	if err != nil {
+		return fmt.Errorf("decode projected arrow log rows: %w", err)
+	}
+	if len(projectedRows) < len(rows) {
+		return fmt.Errorf("projected arrow log rows: got %d rows, want at least %d", len(projectedRows), len(rows))
+	}
+	projectedRows = projectedRows[:len(rows)]
+	want := [][]any{
+		{rows[0].Values[0], rows[0].Values[3]},
+		{rows[1].Values[0], rows[1].Values[3]},
+	}
+	for i := range want {
+		if !rowsEqual(projectedRows[i], want[i]) {
+			return fmt.Errorf("projected arrow row %d: got %v, want %v", i, projectedRows[i], want[i])
+		}
+		fmt.Printf("ProjectedArrowLog Row[%d]: %s\n", i, formatRow(projectedFields, projectedRows[i]))
 	}
 	return nil
 }

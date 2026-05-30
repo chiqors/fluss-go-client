@@ -154,6 +154,10 @@ func (t *TableClient) PrefixLookup(ctx context.Context, reqs []LookupBucketReque
 }
 
 func (t *TableClient) FetchLog(ctx context.Context, followerServerID int32, maxBytes int32, maxWaitMs *int32, minBytes *int32, buckets []FetchBucketRequest) ([]FetchedBucket, error) {
+	return t.FetchLogWithOptions(ctx, followerServerID, maxBytes, maxWaitMs, minBytes, buckets, FetchLogOptions{})
+}
+
+func (t *TableClient) FetchLogWithOptions(ctx context.Context, followerServerID int32, maxBytes int32, maxWaitMs *int32, minBytes *int32, buckets []FetchBucketRequest, opts FetchLogOptions) ([]FetchedBucket, error) {
 	tableInfo, err := t.ensureTableInfo(ctx)
 	if err != nil {
 		return nil, err
@@ -177,9 +181,13 @@ func (t *TableClient) FetchLog(ctx context.Context, followerServerID int32, maxB
 			if minBytes != nil {
 				req.MinBytes = proto.Int32(*minBytes)
 			}
+			projectionEnabled := len(opts.ProjectedFields) > 0
 			tableReq := &flusspb.PbFetchLogReqForTable{
 				TableId:                   proto.Int64(tableInfo.ID),
-				ProjectionPushdownEnabled: proto.Bool(false),
+				ProjectionPushdownEnabled: proto.Bool(projectionEnabled),
+			}
+			if projectionEnabled {
+				tableReq.ProjectedFields = append(tableReq.ProjectedFields, opts.ProjectedFields...)
 			}
 			for _, item := range items {
 				tableReq.BucketsReq = append(tableReq.BucketsReq, buildFetchLogBucket(item))

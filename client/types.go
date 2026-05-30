@@ -103,6 +103,10 @@ type FetchBucketRequest struct {
 	MaxFetchBytes int32
 }
 
+type FetchLogOptions struct {
+	ProjectedFields []int32
+}
+
 type FetchedBucket struct {
 	PartitionID       *int64
 	BucketID          int32

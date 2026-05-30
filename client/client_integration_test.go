@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	arrowcodec "github.com/chiqors/fluss-go-client/internal/codec/arrow"
 	rowcodec "github.com/chiqors/fluss-go-client/internal/codec/row"
 	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
 	"google.golang.org/protobuf/proto"
@@ -517,6 +518,204 @@ func TestDecodeIndexedLimitScanRows(t *testing.T) {
 	}
 	if len(kvRows) != 1 || kvRows[0][0] != int64(42) || kvRows[0][1] != "Ada Lovelace" || kvRows[0][2] != "gold" {
 		t.Fatalf("unexpected kv rows: %#v", kvRows)
+	}
+}
+
+func TestFetchLogWithProjection(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata, flusspb.ApiKey_FetchLog)), nil
+	})
+
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "logs"}, 31, 2)), nil
+	})
+
+	srv.on(flusspb.ApiKey_FetchLog, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.FetchLogRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if req.GetFollowerServerId() != -1 || req.GetMaxBytes() != 4096 {
+			t.Fatalf("unexpected fetch request header: %#v", req)
+		}
+		if len(req.GetTablesReq()) != 1 {
+			t.Fatalf("unexpected tables request: %#v", req)
+		}
+		tableReq := req.GetTablesReq()[0]
+		if !tableReq.GetProjectionPushdownEnabled() {
+			t.Fatalf("expected projection pushdown enabled: %#v", tableReq)
+		}
+		if len(tableReq.GetProjectedFields()) != 2 || tableReq.GetProjectedFields()[0] != 0 || tableReq.GetProjectedFields()[1] != 3 {
+			t.Fatalf("unexpected projected fields: %#v", tableReq.GetProjectedFields())
+		}
+		if len(tableReq.GetBucketsReq()) != 1 || tableReq.GetBucketsReq()[0].GetFetchOffset() != 10 {
+			t.Fatalf("unexpected bucket request: %#v", tableReq.GetBucketsReq())
+		}
+		return mustMarshal(t, &flusspb.FetchLogResponse{
+			TablesResp: []*flusspb.PbFetchLogRespForTable{{
+				TableId: proto.Int64(31),
+				BucketsResp: []*flusspb.PbFetchLogRespForBucket{{
+					BucketId:       proto.Int32(0),
+					HighWatermark:  proto.Int64(15),
+					LogStartOffset: proto.Int64(0),
+					Records:        []byte("projected-log-batch"),
+				}},
+			}},
+		}), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	got, err := cli.Table(TablePath{DatabaseName: "demo", TableName: "logs"}).FetchLogWithOptions(ctx, -1, 4096, nil, nil, []FetchBucketRequest{{
+		BucketID:      0,
+		FetchOffset:   10,
+		MaxFetchBytes: 1024,
+	}}, FetchLogOptions{ProjectedFields: []int32{0, 3}})
+	if err != nil {
+		t.Fatalf("FetchLogWithOptions() error = %v", err)
+	}
+	if len(got) != 1 || string(got[0].Records) != "projected-log-batch" || got[0].HighWatermark != 15 {
+		t.Fatalf("unexpected fetch results: %#v", got)
+	}
+}
+
+func TestAppendArrowRowsAndDecode(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata, flusspb.ApiKey_ProduceLog)), nil
+	})
+
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "arrow_logs"}, 41, 9)), nil
+	})
+
+	srv.on(flusspb.ApiKey_ProduceLog, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.ProduceLogRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		records := req.GetBucketsReq()[0].GetRecords()
+		schema := NewSchema(Int64Type(), Int32Type(), StringType())
+		decoded, err := DecodeArrowLogBatchRows(schema, records)
+		if err != nil {
+			t.Fatalf("DecodeArrowLogBatchRows() error = %v", err)
+		}
+		if len(decoded) != 2 || decoded[0][0] != int64(1) || decoded[1][2] != "packed" {
+			t.Fatalf("unexpected decoded arrow rows: %#v", decoded)
+		}
+		return mustMarshal(t, &flusspb.ProduceLogResponse{
+			BucketsResp: []*flusspb.PbProduceLogRespForBucket{{
+				BucketId:   proto.Int32(0),
+				BaseOffset: proto.Int64(88),
+			}},
+		}), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	schema := NewSchema(Int64Type(), Int32Type(), StringType())
+	row1, err := NewRow(schema, int64(1), int32(101), "created")
+	if err != nil {
+		t.Fatalf("NewRow(row1): %v", err)
+	}
+	row2, err := NewRow(schema, int64(2), int32(102), "packed")
+	if err != nil {
+		t.Fatalf("NewRow(row2): %v", err)
+	}
+	got, err := cli.Table(TablePath{DatabaseName: "demo", TableName: "arrow_logs"}).AppendArrowRows(ctx, 0, []Row{row1, row2})
+	if err != nil {
+		t.Fatalf("AppendArrowRows() error = %v", err)
+	}
+	if len(got) != 1 || got[0].BaseOffset != 88 {
+		t.Fatalf("unexpected append results: %#v", got)
+	}
+}
+
+func TestDecodeArrowLogBatchRows(t *testing.T) {
+	schema := NewSchema(Int64Type(), Int32Type(), StringType())
+	payload, err := arrowcodec.EncodeLogRecordBatch(schema, [][]any{
+		{int64(1), int32(101), "created"},
+		{int64(2), int32(102), "packed"},
+	}, arrowcodec.LogBatchOptions{SchemaID: 3, AppendOnly: true})
+	if err != nil {
+		t.Fatalf("EncodeLogRecordBatch() error = %v", err)
+	}
+	got, err := DecodeArrowLogBatchRows(schema, payload)
+	if err != nil {
+		t.Fatalf("DecodeArrowLogBatchRows() error = %v", err)
+	}
+	if len(got) != 2 || got[0][0] != int64(1) || got[1][2] != "packed" {
+		t.Fatalf("unexpected decoded rows: %#v", got)
+	}
+}
+
+func TestDecodeProjectedArrowLogBatchRowsSkipsCRCValidation(t *testing.T) {
+	schema := NewSchema(Int64Type(), StringType())
+	payload, err := arrowcodec.EncodeLogRecordBatch(schema, [][]any{
+		{int64(1), "created"},
+		{int64(2), "packed"},
+	}, arrowcodec.LogBatchOptions{SchemaID: 3, AppendOnly: true})
+	if err != nil {
+		t.Fatalf("EncodeLogRecordBatch() error = %v", err)
+	}
+	payload[21] ^= 0xFF
+
+	if _, err := DecodeArrowLogBatchRows(schema, payload); err == nil {
+		t.Fatal("DecodeArrowLogBatchRows() error = nil, want CRC validation failure")
+	}
+	got, err := DecodeProjectedArrowLogBatchRows(schema, payload)
+	if err != nil {
+		t.Fatalf("DecodeProjectedArrowLogBatchRows() error = %v", err)
+	}
+	if len(got) != 2 || got[0][0] != int64(1) || got[1][1] != "packed" {
+		t.Fatalf("unexpected projected decoded rows: %#v", got)
 	}
 }
 

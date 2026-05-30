@@ -14,6 +14,7 @@ DROP TABLE IF EXISTS e2e_orders;
 DROP TABLE IF EXISTS e2e_customers;
 DROP TABLE IF EXISTS e2e_customer_orders;
 DROP TABLE IF EXISTS e2e_all_types;
+DROP TABLE IF EXISTS e2e_orders_arrow;
 
 CREATE TABLE e2e_orders (
   order_id BIGINT,
@@ -73,4 +74,15 @@ CREATE TABLE e2e_all_types (
 ) WITH (
   'bucket.num' = '1',
   'table.log.format' = 'indexed'
+);
+
+CREATE TABLE e2e_orders_arrow (
+  order_id BIGINT,
+  customer_id INT,
+  amount DECIMAL(15, 2),
+  status STRING
+) WITH (
+  'bucket.num' = '1',
+  'table.log.format' = 'arrow',
+  'table.log.arrow.compression.type' = 'NONE'
 );

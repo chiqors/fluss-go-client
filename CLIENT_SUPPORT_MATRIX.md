@@ -18,10 +18,10 @@ These operations live under the table append, scan, upsert, and lookup surfaces.
 | Table Type | Operation | Java Client | Go Client |
 |------------|-----------|-------------|-----------|
 | Log | Append | ✔️ | ✔️ |
-| Log | Typed Append | ✔️ |  |
+| Log | Typed Append | ✔️ | ✔️ |
 | Log | Scan | ✔️ | ✔️ |
-| Log | Scan with Projection | ✔️ | ~ |
-| Log | Typed Scan | ✔️ |  |
+| Log | Scan with Projection | ✔️ | ✔️ |
+| Log | Typed Scan | ✔️ | ✔️ |
 | Log | Batch Scan with Limit | ✔️ | ✔️ |
 | Primary Key | Upsert | ✔️ | ✔️ |
 | Primary Key | Upsert with Partial Update | ✔️ | ✔️ |
@@ -34,6 +34,11 @@ These operations live under the table append, scan, upsert, and lookup surfaces.
 | Primary Key | Batch Scan (Snapshot) | ✔️ |  |
 
 For more details, see [Table Overview](https://fluss.apache.org/docs/table-design/overview).
+
+Current note for log projection:
+- upstream/server behavior only supports column projection for `ARROW` log format
+- the Go client now has an Arrow append/decode path plus a projection-aware `FetchLogWithOptions(...)` request path
+- the real-cluster support-contract demo validates projection against a dedicated `ARROW` log table while keeping the broader all-types harness on `INDEXED` tables
 
 ## Data Types
 

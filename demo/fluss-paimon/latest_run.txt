@@ -1,5 +1,5 @@
-waiting for bootstrap tables until 2026-05-30T07:30:29Z
-WaitingForTables: have=[e2e_orders e2e_all_types e2e_customers e2e_customer_orders] expected=[e2e_orders e2e_customers e2e_customer_orders e2e_all_types]
+waiting for bootstrap tables until 2026-05-30T08:24:51Z
+WaitingForTables: have=[e2e_orders e2e_all_types e2e_customers e2e_customer_orders e2e_orders_arrow] expected=[e2e_orders e2e_orders_arrow e2e_customers e2e_customer_orders e2e_all_types]
 [Admin] ListDatabases
 ListDatabases: 0 databases (1 summaries)
 [PASS] Admin/ListDatabases
@@ -7,16 +7,18 @@ ListDatabases: 0 databases (1 summaries)
 DatabaseExists(fluss): true
 [PASS] Admin/DatabaseExists
 [Admin] ListTables
-ListTables: 4 tables ([e2e_all_types e2e_customer_orders e2e_customers e2e_orders])
+ListTables: 5 tables ([e2e_all_types e2e_customer_orders e2e_customers e2e_orders e2e_orders_arrow])
 [PASS] Admin/ListTables
 [Admin] GetTableInfo
 GetTableInfo fluss.e2e_orders: ID=0 SchemaID=1
+GetTableInfo fluss.e2e_orders_arrow: ID=4 SchemaID=1
 GetTableInfo fluss.e2e_customers: ID=1 SchemaID=1
 GetTableInfo fluss.e2e_customer_orders: ID=2 SchemaID=1
 GetTableInfo fluss.e2e_all_types: ID=3 SchemaID=1
 [PASS] Admin/GetTableInfo
 [Admin] GetTableSchema
 GetTableSchema fluss.e2e_orders: SchemaID=1
+GetTableSchema fluss.e2e_orders_arrow: SchemaID=1
 GetTableSchema fluss.e2e_customers: SchemaID=1
 GetTableSchema fluss.e2e_customer_orders: SchemaID=1
 GetTableSchema fluss.e2e_all_types: SchemaID=1
@@ -29,6 +31,13 @@ LimitScanLog Row[0]: {order_id=2001, customer_id=101, amount=19.95, status=creat
 LimitScanLog Row[1]: {order_id=2002, customer_id=102, amount=29.5, status=packed}
 LimitScanLog Row[2]: {order_id=2003, customer_id=103, amount=39.25, status=shipped}
 [PASS] Data Operations/LogAppendAndLimitScan
+[Data Operations] ArrowLogAppendFetchAndProjection
+AppendArrowLog: bucket=0 base_offset=0 rows=2
+FetchArrowLog Row[0]: {order_id=4001, customer_id=201, amount=11.25, status=created}
+FetchArrowLog Row[1]: {order_id=4002, customer_id=202, amount=22.5, status=packed}
+ProjectedArrowLog Row[0]: {order_id=4001, status=created}
+ProjectedArrowLog Row[1]: {order_id=4002, status=packed}
+[PASS] Data Operations/ArrowLogAppendFetchAndProjection
 [Data Operations] AllTypesAppendAndLimitScan
 AppendAllTypes[0]: bucket=0 base_offset=0
 AllTypes Row[0]: {event_id=3001, bool_flag=true, tiny_value=7, small_value=70, int_value=700, big_value=7000, float_value=7.25, double_value=70.5, name=typed-event, raw_bytes=[112 97 121 108 111 97 100], amount={12345 2}, event_date=20000, event_time=3723000, event_ts={1717000000123 456789}, event_ts_ltz={1717000000456 123456}, score_history=[3 5 8], label_counts=map[alpha:1 beta:2], nested_payload=[note 9 [x y]]}

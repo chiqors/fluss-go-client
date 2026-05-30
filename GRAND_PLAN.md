@@ -60,6 +60,8 @@ Success means a Go team can:
 
 ### Progress Ledger
 
+- 2026-05-30: added the first Fluss-specific Arrow log batch path in Go, including public Arrow append/decode helpers, mock integration coverage, a dedicated `ARROW` demo table, and real-cluster E2E intent for projection-backed log fetch semantics.
+- 2026-05-30: added projection-aware public log fetch options and request-level test coverage; discovered via real-cluster validation that Fluss only supports column projection for `ARROW` log format, so the `INDEXED`-table demo and support matrix were narrowed back to partial support.
 - 2026-05-30: promoted primary-key limit scan into a decoded public data operation with shared limit-scan row helpers and real-cluster E2E coverage, moving another support-matrix data-operation row out of raw-byte-only usage.
 - 2026-05-30: exposed Go-native public row/schema/type constructors and log-batch decode helpers through `client/`; validated all implemented scalar and composite data types in the Fluss+Paimon E2E all-types log round-trip.
 - 2026-05-30: validated the Go demo against the real Fluss/Paimon stack, including prefix lookup round-trip on `e2e_customer_orders`; updated the demo docs and support matrix to match the current behavior.
@@ -93,7 +95,7 @@ Success means a Go team can:
 
 ### Not production-ready yet
 
-- [ ] Arrow record batch decoding/encoding as a first-class public API
+- [~] Arrow record batch decoding/encoding as a first-class public API
 - [~] Stable typed row abstraction beyond raw bytes
 - [ ] Higher-level writer types with batching, flush, retry, and lifecycle semantics
 - [ ] Higher-level scanner types with iterator or poll abstractions

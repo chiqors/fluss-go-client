@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	arrowcodec "github.com/chiqors/fluss-go-client/internal/codec/arrow"
 	rowcodec "github.com/chiqors/fluss-go-client/internal/codec/row"
 	"github.com/chiqors/fluss-go-client/internal/metadata"
 )
@@ -16,6 +17,36 @@ func (t *TableClient) AppendIndexedRow(ctx context.Context, bucketID int32, row 
 		return nil, err
 	}
 	payload, err := rowcodec.EncodeLogRecordBatch(row.Schema, row.Values, rowcodec.LogBatchOptions{SchemaID: info.SchemaID, Indexed: true})
+	if err != nil {
+		return nil, err
+	}
+	return t.AppendLog(ctx, -1, 15000, []BucketRecordBatch{{BucketID: bucketID, Records: payload}})
+}
+
+// AppendArrowRows encodes one or more rows using the Arrow log layout and appends them to a log table.
+func (t *TableClient) AppendArrowRows(ctx context.Context, bucketID int32, rows []Row) ([]ProduceResult, error) {
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("fluss: append arrow rows: at least one row is required")
+	}
+	info, err := t.ensureTableInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	schema := rows[0].Schema
+	values := make([][]any, 0, len(rows))
+	for i, row := range rows {
+		if len(row.Schema.Fields) != len(schema.Fields) {
+			return nil, fmt.Errorf("fluss: append arrow rows: row %d schema field count mismatch", i)
+		}
+		if err := row.Schema.Validate(); err != nil {
+			return nil, fmt.Errorf("fluss: append arrow rows: row %d schema invalid: %w", i, err)
+		}
+		values = append(values, row.Values)
+	}
+	payload, err := arrowcodec.EncodeLogRecordBatch(schema, values, arrowcodec.LogBatchOptions{
+		SchemaID:   info.SchemaID,
+		AppendOnly: true,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -114,6 +145,26 @@ func DecodeIndexedLogBatchRows(schema Schema, payload []byte) ([][]any, error) {
 	values, err := rowcodec.DecodeLogRecordBatchRows(schema, payload)
 	if err != nil {
 		return nil, fmt.Errorf("fluss: decode indexed log batch rows: %w", err)
+	}
+	return values, nil
+}
+
+// DecodeArrowLogBatchRows decodes one or more Arrow-format log batches into rows.
+func DecodeArrowLogBatchRows(schema Schema, payload []byte) ([][]any, error) {
+	values, err := arrowcodec.DecodeLogRecordBatchRows(schema, payload)
+	if err != nil {
+		return nil, fmt.Errorf("fluss: decode arrow log batch rows: %w", err)
+	}
+	return values, nil
+}
+
+// DecodeProjectedArrowLogBatchRows decodes Arrow-format log batches returned by server-side
+// projection pushdown. Fluss prunes and rebuilds these batches, so their original full-batch CRC
+// contract is not preserved and should not be revalidated on the client.
+func DecodeProjectedArrowLogBatchRows(schema Schema, payload []byte) ([][]any, error) {
+	values, err := arrowcodec.DecodeProjectedLogRecordBatchRows(schema, payload)
+	if err != nil {
+		return nil, fmt.Errorf("fluss: decode projected arrow log batch rows: %w", err)
 	}
 	return values, nil
 }
