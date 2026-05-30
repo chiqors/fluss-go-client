@@ -93,6 +93,7 @@ func main() {
 		{section: "Admin", name: "GetTableSchema", run: runGetTableSchema},
 		{section: "Admin", name: "CreateAlterAndDropTable", run: runCreateAlterAndDropTable},
 		{section: "Admin", name: "PartitionLifecycle", run: runPartitionLifecycle},
+		{section: "Admin", name: "NegativePaths", run: runAdminNegativePaths},
 		{section: "Data Operations", name: "LogAppendAndLimitScan", run: runLogAppendAndLimitScan},
 		{section: "Data Operations", name: "ArrowLogAppendFetchAndProjection", run: runArrowLogAppendFetchAndProjection},
 		{section: "Data Operations", name: "AllTypesAppendAndLimitScan", run: runAllTypesAppendAndLimitScan},
@@ -352,6 +353,110 @@ func runPartitionLifecycle(ctx context.Context, cli *client.Client, env environm
 		return fmt.Errorf("partition still returned after drop: %v", final)
 	}
 	fmt.Printf("PartitionLifecycle: table=%s.%s before=%d after_create=%d after_drop=%d\n", path.DatabaseName, path.TableName, len(before), len(after), len(final))
+	return nil
+}
+
+func runAdminNegativePaths(ctx context.Context, cli *client.Client, env environment) error {
+	admin := cli.Admin()
+	dbName := "go_e2e_admin_negative_db"
+	tablePath := client.TablePath{DatabaseName: env.database, TableName: "go_e2e_admin_negative_table"}
+	partitionSpec := client.PartitionSpec{{Key: "pt", Value: "2026"}}
+
+	if err := admin.DropDatabase(ctx, dbName, true, true); err != nil {
+		return fmt.Errorf("negative db cleanup: %w", err)
+	}
+	if err := expectErr("drop missing database without ignore", admin.DropDatabase(ctx, dbName, false, true)); err != nil {
+		return err
+	}
+	if err := admin.DropDatabase(ctx, dbName, true, true); err != nil {
+		return fmt.Errorf("drop missing database with ignore: %w", err)
+	}
+	if err := admin.CreateDatabase(ctx, dbName, []byte(`{"version":1,"comment":"go e2e negative database","custom_properties":{}}`), false); err != nil {
+		return fmt.Errorf("create negative db fixture: %w", err)
+	}
+	if err := expectErr("create duplicate database without ignore", admin.CreateDatabase(ctx, dbName, []byte(`{"version":1,"comment":"go e2e negative database","custom_properties":{}}`), false)); err != nil {
+		return err
+	}
+	if err := admin.CreateDatabase(ctx, dbName, []byte(`{"version":1,"comment":"go e2e negative database","custom_properties":{}}`), true); err != nil {
+		return fmt.Errorf("create duplicate database with ignore: %w", err)
+	}
+	if err := admin.DropDatabase(ctx, dbName, false, true); err != nil {
+		return fmt.Errorf("drop negative db fixture: %w", err)
+	}
+
+	if err := admin.DropTable(ctx, tablePath, true); err != nil {
+		return fmt.Errorf("negative table cleanup: %w", err)
+	}
+	if err := expectErr("drop missing table without ignore", admin.DropTable(ctx, tablePath, false)); err != nil {
+		return err
+	}
+	if err := admin.DropTable(ctx, tablePath, true); err != nil {
+		return fmt.Errorf("drop missing table with ignore: %w", err)
+	}
+	createJSON := []byte(`{
+		"version":1,
+		"schema":{
+			"version":1,
+			"columns":[
+				{"name":"id","data_type":{"type":"BIGINT","nullable":true},"id":0},
+				{"name":"name","data_type":{"type":"STRING","nullable":true},"id":1}
+			],
+			"highest_field_id":1
+		},
+		"comment":"go e2e negative table",
+		"partition_key":[],
+		"bucket_key":[],
+		"bucket_count":1,
+		"properties":{},
+		"custom_properties":{}
+	}`)
+	if err := admin.CreateTable(ctx, tablePath, createJSON, false); err != nil {
+		return fmt.Errorf("create negative table fixture: %w", err)
+	}
+	if err := expectErr("create duplicate table without ignore", admin.CreateTable(ctx, tablePath, createJSON, false)); err != nil {
+		return err
+	}
+	if err := admin.CreateTable(ctx, tablePath, createJSON, true); err != nil {
+		return fmt.Errorf("create duplicate table with ignore: %w", err)
+	}
+	if err := admin.DropTable(ctx, tablePath, false); err != nil {
+		return fmt.Errorf("drop negative table fixture: %w", err)
+	}
+	missingValue := "1s"
+	if err := expectErr("alter missing table without ignore", admin.AlterTable(ctx, tablePath, []client.AlterTableChange{
+		client.TableConfigChange{Key: "client.connect-timeout", Value: &missingValue, Op: client.AlterConfigSet},
+	}, false)); err != nil {
+		return err
+	}
+	if err := admin.AlterTable(ctx, tablePath, []client.AlterTableChange{
+		client.TableConfigChange{Key: "client.connect-timeout", Value: &missingValue, Op: client.AlterConfigSet},
+	}, true); err != nil {
+		return fmt.Errorf("alter missing table with ignore: %w", err)
+	}
+
+	if err := admin.DropPartition(ctx, env.adminPartitioned, partitionSpec, true); err != nil {
+		return fmt.Errorf("negative partition cleanup: %w", err)
+	}
+	if err := expectErr("drop missing partition without ignore", admin.DropPartition(ctx, env.adminPartitioned, partitionSpec, false)); err != nil {
+		return err
+	}
+	if err := admin.DropPartition(ctx, env.adminPartitioned, partitionSpec, true); err != nil {
+		return fmt.Errorf("drop missing partition with ignore: %w", err)
+	}
+	if err := admin.CreatePartition(ctx, env.adminPartitioned, partitionSpec, false); err != nil {
+		return fmt.Errorf("create negative partition fixture: %w", err)
+	}
+	if err := expectErr("create duplicate partition without ignore", admin.CreatePartition(ctx, env.adminPartitioned, partitionSpec, false)); err != nil {
+		return err
+	}
+	if err := admin.CreatePartition(ctx, env.adminPartitioned, partitionSpec, true); err != nil {
+		return fmt.Errorf("create duplicate partition with ignore: %w", err)
+	}
+	if err := admin.DropPartition(ctx, env.adminPartitioned, partitionSpec, false); err != nil {
+		return fmt.Errorf("drop negative partition fixture: %w", err)
+	}
+
+	fmt.Printf("AdminNegativePaths: duplicate/create/drop ignore semantics verified for database, table, and partition operations\n")
 	return nil
 }
 
@@ -830,6 +935,13 @@ func mustRows(schema client.Schema, values [][]any) []client.Row {
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+func expectErr(op string, err error) error {
+	if err == nil {
+		return fmt.Errorf("%s: expected error, got nil", op)
+	}
+	return nil
 }
 
 func mustDecimal(value string, precision, scale int) client.Decimal {

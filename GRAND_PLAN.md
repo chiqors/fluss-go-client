@@ -62,6 +62,7 @@ Success means a Go team can:
 
 - 2026-05-30: extended the canonical Fluss+Paimon real-cluster harness to cover safe admin lifecycle semantics as well, adding database create/drop, database info, table exists, temporary table create/alter/drop, and partition create/list/filter/drop checks while intentionally leaving cluster-global admin mutations outside the single-cluster demo contract.
 - 2026-05-30: finished stabilizing the canonical Fluss+Paimon admin lifecycle E2E against the real cluster, including valid Fluss descriptor JSON for temp database/table creation and clearer `ListDatabases` logging when the server returns only database summaries; the admin contract run is now green end-to-end.
+- 2026-05-30: added real-cluster negative-path admin assertions to the canonical Fluss+Paimon harness, verifying duplicate create and missing drop/alter semantics for database, table, and partition operations with and without ignore flags.
 - 2026-05-30: completed the remaining currently-scoped admin parity batch from the upstream Java protocol definitions, adding Go support for cluster config describe/alter, server tag add/remove, rebalance start/progress/cancel, and ACL list/create/drop, with regenerated proto coverage and mock integration request assertions.
 - 2026-05-30: implemented the first missing admin-mutation parity slice using the upstream Java RPC contract as the wire reference, adding public Go support for `AlterTable`, `CreatePartition`, `DropPartition`, and filtered `ListPartitionInfos`, plus regenerated proto coverage and mock integration assertions for the request shapes.
 - 2026-05-30: completed the first primary-key snapshot batch-scan implementation slice by adding public snapshot storage config, a MinIO-backed remote snapshot downloader, a public `TableClient.SnapshotScanRows(...)` helper, and mock/integration coverage; after real-cluster validation showed Fluss snapshot local-reader portability is still messy across Pebble/RocksDB approaches, snapshot batch scan was pulled back out of the canonical demo support contract and remains deferred pending a cleaner implementation strategy.
@@ -284,7 +285,7 @@ Goal: ship a solid, documented admin surface.
 ### Tests
 
 - [x] Real-cluster admin lifecycle matrix
-- [ ] Duplicate create / not-found / invalid-request error assertions
+- [x] Duplicate create / not-found / invalid-request error assertions
 - [ ] Concurrent admin call coverage
 
 Exit criteria:
@@ -544,12 +545,12 @@ Exit criteria:
 ## E2E tests
 
 - [x] Docker Compose smoke test for direct client connectivity and schema access
-- [ ] append then fetch/scan E2E
-- [ ] upsert then lookup E2E
+- [x] append then fetch/scan E2E
+- [x] upsert then lookup E2E
 - [x] prefix lookup E2E
 - [ ] KV scan lifecycle E2E
 - [ ] lake-enabled read-path E2E if supported in v1
-- [ ] support-matrix-driven parity audit against the upstream Java client
+- [x] support-matrix-driven parity audit against the upstream Java client
 
 ## Current Known Gaps
 

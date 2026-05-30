@@ -1,13 +1,13 @@
-waiting for bootstrap tables until 2026-05-30T12:06:42Z
+waiting for bootstrap tables until 2026-05-30T12:14:37Z
 WaitingForTables: have=[e2e_orders e2e_all_types e2e_customers e2e_admin_partitions e2e_customer_orders e2e_orders_arrow] expected=[e2e_orders e2e_orders_arrow e2e_customers e2e_customer_orders e2e_all_types e2e_admin_partitions]
 [Admin] ListDatabases
-ListDatabases: 0 databases (1 summaries)
+ListDatabases: names=0 summaries=1 resolved=[fluss]
 [PASS] Admin/ListDatabases
 [Admin] DatabaseExists
 DatabaseExists(fluss): true
 [PASS] Admin/DatabaseExists
 [Admin] GetDatabaseInfo
-GetDatabaseInfo(fluss): created=1780142575985 modified=1780142575985 json_bytes=36
+GetDatabaseInfo(fluss): created=1780143051450 modified=1780143051450 json_bytes=36
 [PASS] Admin/GetDatabaseInfo
 [Admin] CreateAndDropDatabase
 CreateDropDatabase: name=go_e2e_admin_db lifecycle_ok=true
@@ -45,6 +45,9 @@ CreateAlterDropTable: table=fluss.go_e2e_admin_table lifecycle_ok=true
 [Admin] PartitionLifecycle
 PartitionLifecycle: table=fluss.e2e_admin_partitions before=0 after_create=1 after_drop=0
 [PASS] Admin/PartitionLifecycle
+[Admin] NegativePaths
+AdminNegativePaths: duplicate/create/drop ignore semantics verified for database, table, and partition operations
+[PASS] Admin/NegativePaths
 [Data Operations] LogAppendAndLimitScan
 AppendLog[0]: bucket=0 base_offset=0
 AppendLog[1]: bucket=0 base_offset=1
