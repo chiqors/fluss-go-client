@@ -1,20 +1,35 @@
-waiting for bootstrap tables until 2026-05-30T09:56:25Z
-WaitingForTables: have=[e2e_orders e2e_all_types e2e_customers e2e_customer_orders e2e_orders_arrow] expected=[e2e_orders e2e_orders_arrow e2e_customers e2e_customer_orders e2e_all_types]
+waiting for bootstrap tables until 2026-05-30T12:06:42Z
+WaitingForTables: have=[e2e_orders e2e_all_types e2e_customers e2e_admin_partitions e2e_customer_orders e2e_orders_arrow] expected=[e2e_orders e2e_orders_arrow e2e_customers e2e_customer_orders e2e_all_types e2e_admin_partitions]
 [Admin] ListDatabases
 ListDatabases: 0 databases (1 summaries)
 [PASS] Admin/ListDatabases
 [Admin] DatabaseExists
 DatabaseExists(fluss): true
 [PASS] Admin/DatabaseExists
+[Admin] GetDatabaseInfo
+GetDatabaseInfo(fluss): created=1780142575985 modified=1780142575985 json_bytes=36
+[PASS] Admin/GetDatabaseInfo
+[Admin] CreateAndDropDatabase
+CreateDropDatabase: name=go_e2e_admin_db lifecycle_ok=true
+[PASS] Admin/CreateAndDropDatabase
 [Admin] ListTables
-ListTables: 5 tables ([e2e_all_types e2e_customer_orders e2e_customers e2e_orders e2e_orders_arrow])
+ListTables: 6 tables ([e2e_admin_partitions e2e_all_types e2e_customer_orders e2e_customers e2e_orders e2e_orders_arrow])
 [PASS] Admin/ListTables
+[Admin] TableExists
+TableExists(fluss.e2e_orders): true
+TableExists(fluss.e2e_orders_arrow): true
+TableExists(fluss.e2e_customers): true
+TableExists(fluss.e2e_customer_orders): true
+TableExists(fluss.e2e_all_types): true
+TableExists(fluss.e2e_admin_partitions): true
+[PASS] Admin/TableExists
 [Admin] GetTableInfo
 GetTableInfo fluss.e2e_orders: ID=0 SchemaID=1
 GetTableInfo fluss.e2e_orders_arrow: ID=4 SchemaID=1
 GetTableInfo fluss.e2e_customers: ID=1 SchemaID=1
 GetTableInfo fluss.e2e_customer_orders: ID=2 SchemaID=1
 GetTableInfo fluss.e2e_all_types: ID=3 SchemaID=1
+GetTableInfo fluss.e2e_admin_partitions: ID=5 SchemaID=1
 [PASS] Admin/GetTableInfo
 [Admin] GetTableSchema
 GetTableSchema fluss.e2e_orders: SchemaID=1
@@ -22,7 +37,14 @@ GetTableSchema fluss.e2e_orders_arrow: SchemaID=1
 GetTableSchema fluss.e2e_customers: SchemaID=1
 GetTableSchema fluss.e2e_customer_orders: SchemaID=1
 GetTableSchema fluss.e2e_all_types: SchemaID=1
+GetTableSchema fluss.e2e_admin_partitions: SchemaID=1
 [PASS] Admin/GetTableSchema
+[Admin] CreateAlterAndDropTable
+CreateAlterDropTable: table=fluss.go_e2e_admin_table lifecycle_ok=true
+[PASS] Admin/CreateAlterAndDropTable
+[Admin] PartitionLifecycle
+PartitionLifecycle: table=fluss.e2e_admin_partitions before=0 after_create=1 after_drop=0
+[PASS] Admin/PartitionLifecycle
 [Data Operations] LogAppendAndLimitScan
 AppendLog[0]: bucket=0 base_offset=0
 AppendLog[1]: bucket=0 base_offset=1

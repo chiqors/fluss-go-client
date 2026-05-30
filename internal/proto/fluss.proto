@@ -57,6 +57,13 @@ enum ApiKey {
   ListAcls = 1040;
   DropAcls = 1041;
   AlterTable = 1044;
+  DescribeClusterConfigs = 1045;
+  AlterClusterConfigs = 1046;
+  AddServerTag = 1047;
+  RemoveServerTag = 1048;
+  Rebalance = 1049;
+  ListRebalanceProgress = 1050;
+  CancelRebalance = 1051;
   ScanKV = 1059;
 }
 
@@ -293,6 +300,69 @@ message PbModifyColumn {
   optional bytes data_type_json = 2;
   optional string comment = 3;
   optional int32 column_position_type = 4;
+}
+
+message PbAclInfo {
+  required string resource_name = 1;
+  required int32 resource_type = 2;
+  required string principal_name = 3;
+  required string principal_type = 4;
+  required string host = 5;
+  required int32 operation_type = 6;
+  required int32 permission_type = 7;
+}
+
+message PbAclFilter {
+  optional string resource_name = 1;
+  required int32 resource_type = 2;
+  optional string principal_name = 3;
+  optional string principal_type = 4;
+  optional string host = 5;
+  required int32 operation_type = 6;
+  required int32 permission_type = 7;
+}
+
+message PbCreateAclRespInfo {
+  required PbAclInfo acl = 1;
+  optional int32 error_code = 2;
+  optional string error_message = 3;
+}
+
+message PbDropAclsMatchingAcl {
+  required PbAclInfo acl = 1;
+  optional int32 error_code = 2;
+  optional string error_message = 3;
+}
+
+message PbDropAclsFilterResult {
+  repeated PbDropAclsMatchingAcl matching_acls = 1;
+  optional int32 error_code = 2;
+  optional string error_message = 3;
+}
+
+message PbDescribeConfig {
+  required string config_key = 1;
+  optional string config_value = 2;
+  required string config_source = 3;
+}
+
+message PbRebalancePlanForBucket {
+  optional int64 partition_id = 1;
+  required int32 bucket_id = 2;
+  optional int32 original_leader = 3;
+  optional int32 new_leader = 4;
+  repeated int32 original_replicas = 5 [packed = true];
+  repeated int32 new_replicas = 6 [packed = true];
+}
+
+message PbRebalanceProgressForBucket {
+  required PbRebalancePlanForBucket rebalance_plan = 1;
+  required int32 rebalance_status = 2;
+}
+
+message PbRebalanceProgressForTable {
+  required int64 table_id = 1;
+  repeated PbRebalanceProgressForBucket buckets_progress = 2;
 }
 
 message ListPartitionInfosResponse {
@@ -577,3 +647,77 @@ message AuthenticateRequest {
 message AuthenticateResponse {
   optional bytes challenge = 1;
 }
+
+message ListAclsRequest {
+  required PbAclFilter acl_filter = 1;
+}
+
+message ListAclsResponse {
+  repeated PbAclInfo acl = 1;
+}
+
+message CreateAclsRequest {
+  repeated PbAclInfo acl = 1;
+}
+
+message CreateAclsResponse {
+  repeated PbCreateAclRespInfo acl_res = 1;
+}
+
+message DropAclsRequest {
+  repeated PbAclFilter acl_filter = 1;
+}
+
+message DropAclsResponse {
+  repeated PbDropAclsFilterResult filter_results = 1;
+}
+
+message DescribeClusterConfigsRequest {}
+
+message DescribeClusterConfigsResponse {
+  repeated PbDescribeConfig configs = 1;
+}
+
+message AlterClusterConfigsRequest {
+  repeated PbAlterConfig alter_configs = 1;
+}
+
+message AlterClusterConfigsResponse {}
+
+message AddServerTagRequest {
+  repeated int32 server_ids = 1 [packed = true];
+  required int32 server_tag = 2;
+}
+
+message AddServerTagResponse {}
+
+message RemoveServerTagRequest {
+  repeated int32 server_ids = 1 [packed = true];
+  required int32 server_tag = 2;
+}
+
+message RemoveServerTagResponse {}
+
+message RebalanceRequest {
+  repeated int32 goals = 1 [packed = true];
+}
+
+message RebalanceResponse {
+  required string rebalance_id = 1;
+}
+
+message ListRebalanceProgressRequest {
+  optional string rebalance_id = 1;
+}
+
+message ListRebalanceProgressResponse {
+  optional string rebalance_id = 1;
+  optional int32 rebalance_status = 2;
+  repeated PbRebalanceProgressForTable table_progress = 3;
+}
+
+message CancelRebalanceRequest {
+  optional string rebalance_id = 1;
+}
+
+message CancelRebalanceResponse {}

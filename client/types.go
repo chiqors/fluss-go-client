@@ -110,6 +110,79 @@ type ModifyColumnChange struct {
 
 func (ModifyColumnChange) alterTableChange() {}
 
+type ClusterConfigEntry struct {
+	Key    string
+	Value  *string
+	Source string
+}
+
+type ServerTag int32
+
+type RebalanceGoal int32
+
+type ACLBinding struct {
+	ResourceName   string
+	ResourceType   int32
+	PrincipalName  string
+	PrincipalType  string
+	Host           string
+	OperationType  int32
+	PermissionType int32
+}
+
+type ACLFilter struct {
+	ResourceName   *string
+	ResourceType   int32
+	PrincipalName  *string
+	PrincipalType  *string
+	Host           *string
+	OperationType  int32
+	PermissionType int32
+}
+
+type CreateACLResult struct {
+	ACL          ACLBinding
+	ErrorCode    *int32
+	ErrorMessage *string
+}
+
+type DropACLMatchingResult struct {
+	ACL          ACLBinding
+	ErrorCode    *int32
+	ErrorMessage *string
+}
+
+type DropACLFilterResult struct {
+	MatchingACLs []DropACLMatchingResult
+	ErrorCode    *int32
+	ErrorMessage *string
+}
+
+type RebalanceBucketPlan struct {
+	PartitionID      *int64
+	BucketID         int32
+	OriginalLeader   *int32
+	NewLeader        *int32
+	OriginalReplicas []int32
+	NewReplicas      []int32
+}
+
+type RebalanceBucketProgress struct {
+	Plan   RebalanceBucketPlan
+	Status int32
+}
+
+type RebalanceTableProgress struct {
+	TableID int64
+	Buckets []RebalanceBucketProgress
+}
+
+type RebalanceProgress struct {
+	RebalanceID string
+	Status      *int32
+	Tables      []RebalanceTableProgress
+}
+
 type SnapshotFile struct {
 	RemotePath    string
 	LocalFileName string

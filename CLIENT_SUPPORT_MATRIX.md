@@ -3,7 +3,7 @@
 Fluss has a rich set of features and native data types available to users. The tables below summarize what the upstream Java client supports today and what the Go client in this repo supports today.
 
 The current real-cluster support contract is exercised by the Fluss+Paimon demo under `demo/fluss-paimon`.
-That E2E harness validates the implemented Go `client/` surface for admin metadata, indexed log append + limit scan, Arrow log fetch + projection, all-types log round-trip, primary-key upsert + lookup, primary-key partial update, primary-key limit scan, primary-key delete, and prefix lookup against a real Fluss deployment, using the upstream Java client semantics as the reference for overlapping behaviors. The codebase also includes upstream-aligned snapshot admin APIs, but full primary-key snapshot batch scan is not currently part of the canonical real-cluster demo support contract.
+That E2E harness is currently green for the implemented Go `client/` surface covering database/table/partition admin lifecycle, indexed log append + limit scan, Arrow log fetch + projection, all-types log round-trip, primary-key upsert + lookup, primary-key partial update, primary-key limit scan, primary-key delete, and prefix lookup against a real Fluss deployment, using the upstream Java client semantics as the reference for overlapping behaviors. The codebase also includes upstream-aligned snapshot admin APIs, but full primary-key snapshot batch scan is not currently part of the canonical real-cluster demo support contract.
 
 Legend:
 
@@ -76,6 +76,10 @@ For more details, see [Data Types](https://fluss.apache.org/docs/table-design/da
 
 ## Admin Operations
 
+Current note for admin operations:
+- the canonical Fluss+Paimon real-cluster harness is now green for safe database, table, and partition lifecycle coverage through the public Go admin API
+- cluster-global admin mutations such as ACL changes, cluster config mutation, rebalance control, and server-tag mutation are implemented in the Go SDK and covered by mock integration tests, but they are intentionally outside the single-tablet demo contract for now
+
 | Entity | Operation | Java Client | Go Client |
 |--------|-----------|-------------|-----------|
 | Database | CreateDatabase | ✔️ | ✔️ |
@@ -96,16 +100,16 @@ For more details, see [Data Types](https://fluss.apache.org/docs/table-design/da
 | Snapshot | GetLatestKvSnapshots | ✔️ | ✔️ |
 | Snapshot | GetLatestLakeSnapshot | ✔️ | ✔️ |
 | Bucket | ListOffsets | ✔️ | ✔️ |
-| Cluster | AlterClusterConfigs | ✔️ |  |
-| Cluster | DescribeClusterConfigs | ✔️ |  |
-| Cluster | CancelRebalance | ✔️ |  |
-| Cluster | Rebalance | ✔️ |  |
-| Cluster | ListRebalanceProgress | ✔️ |  |
-| Server | AddServerTag | ✔️ |  |
-| Server | RemoveServerTag | ✔️ |  |
-| ACL | CreateAcls | ✔️ |  |
-| ACL | DropAcls | ✔️ |  |
-| ACL | ListAcls | ✔️ |  |
+| Cluster | AlterClusterConfigs | ✔️ | ✔️ |
+| Cluster | DescribeClusterConfigs | ✔️ | ✔️ |
+| Cluster | CancelRebalance | ✔️ | ✔️ |
+| Cluster | Rebalance | ✔️ | ✔️ |
+| Cluster | ListRebalanceProgress | ✔️ | ✔️ |
+| Server | AddServerTag | ✔️ | ✔️ |
+| Server | RemoveServerTag | ✔️ | ✔️ |
+| ACL | CreateAcls | ✔️ | ✔️ |
+| ACL | DropAcls | ✔️ | ✔️ |
+| ACL | ListAcls | ✔️ | ✔️ |
 
 ## Data Lake Formats
 

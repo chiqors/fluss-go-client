@@ -15,6 +15,7 @@ DROP TABLE IF EXISTS e2e_customers;
 DROP TABLE IF EXISTS e2e_customer_orders;
 DROP TABLE IF EXISTS e2e_all_types;
 DROP TABLE IF EXISTS e2e_orders_arrow;
+DROP TABLE IF EXISTS e2e_admin_partitions;
 
 CREATE TABLE e2e_orders (
   order_id BIGINT,
@@ -84,4 +85,12 @@ CREATE TABLE e2e_orders_arrow (
 ) WITH (
   'bucket.num' = '1',
   'table.log.format' = 'arrow'
+);
+
+CREATE TABLE e2e_admin_partitions (
+  entity_id BIGINT,
+  entity_name STRING,
+  pt STRING
+) PARTITIONED BY (pt) WITH (
+  'bucket.num' = '1'
 );

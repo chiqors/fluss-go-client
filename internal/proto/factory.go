@@ -19,6 +19,46 @@ func New(name string) (proto.Message, error) {
 		return &flusspb.AuthenticateRequest{}, nil
 	case "AuthenticateResponse":
 		return &flusspb.AuthenticateResponse{}, nil
+	case "ListAclsRequest":
+		return &flusspb.ListAclsRequest{}, nil
+	case "ListAclsResponse":
+		return &flusspb.ListAclsResponse{}, nil
+	case "CreateAclsRequest":
+		return &flusspb.CreateAclsRequest{}, nil
+	case "CreateAclsResponse":
+		return &flusspb.CreateAclsResponse{}, nil
+	case "DropAclsRequest":
+		return &flusspb.DropAclsRequest{}, nil
+	case "DropAclsResponse":
+		return &flusspb.DropAclsResponse{}, nil
+	case "DescribeClusterConfigsRequest":
+		return &flusspb.DescribeClusterConfigsRequest{}, nil
+	case "DescribeClusterConfigsResponse":
+		return &flusspb.DescribeClusterConfigsResponse{}, nil
+	case "AlterClusterConfigsRequest":
+		return &flusspb.AlterClusterConfigsRequest{}, nil
+	case "AlterClusterConfigsResponse":
+		return &flusspb.AlterClusterConfigsResponse{}, nil
+	case "AddServerTagRequest":
+		return &flusspb.AddServerTagRequest{}, nil
+	case "AddServerTagResponse":
+		return &flusspb.AddServerTagResponse{}, nil
+	case "RemoveServerTagRequest":
+		return &flusspb.RemoveServerTagRequest{}, nil
+	case "RemoveServerTagResponse":
+		return &flusspb.RemoveServerTagResponse{}, nil
+	case "RebalanceRequest":
+		return &flusspb.RebalanceRequest{}, nil
+	case "RebalanceResponse":
+		return &flusspb.RebalanceResponse{}, nil
+	case "ListRebalanceProgressRequest":
+		return &flusspb.ListRebalanceProgressRequest{}, nil
+	case "ListRebalanceProgressResponse":
+		return &flusspb.ListRebalanceProgressResponse{}, nil
+	case "CancelRebalanceRequest":
+		return &flusspb.CancelRebalanceRequest{}, nil
+	case "CancelRebalanceResponse":
+		return &flusspb.CancelRebalanceResponse{}, nil
 	case "MetadataRequest":
 		return &flusspb.MetadataRequest{}, nil
 	case "MetadataResponse":

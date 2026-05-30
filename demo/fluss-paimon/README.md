@@ -52,6 +52,7 @@ The SQL bootstrap creates a Fluss catalog plus focused support-contract tables:
 - primary-key table: `e2e_customers` (`COMPACTED` KV format)
 - prefix-lookup table: `e2e_customer_orders` (`COMPACTED` KV format)
 - all-types log table: `e2e_all_types`
+- admin partition fixture table: `e2e_admin_partitions`
 
 This table now uses the default Fluss `ARROW` compression settings, so the support-contract E2E covers Arrow projection semantics under the normal `ZSTD`-backed path rather than a special uncompressed override.
 
@@ -62,8 +63,11 @@ The Go service then runs a matrix-style feature harness:
 
 - connects to Fluss using the Go SDK
 - lists databases and tables
-- validates database existence checks
-- fetches table metadata and schema for the bootstrap tables
+- validates database existence and database-info checks
+- exercises temporary database create/drop lifecycle through the Go admin API
+- validates table existence plus table metadata/schema retrieval for the bootstrap tables
+- exercises temporary table create/alter/drop lifecycle through the Go admin API
+- exercises partition create/list/filter/drop lifecycle against a dedicated bootstrap partitioned table
 - appends indexed log rows and verifies log `LimitScan` returns the latest rows, following the upstream Java client contract
 - appends Arrow log rows, fetches them back, and verifies column projection through `FetchLogWithOptions(...)` against a real `ARROW` log table
 - appends and scans a dedicated all-types log row covering scalar, temporal, decimal, and nested `ARRAY/MAP/ROW` codec support
@@ -74,8 +78,21 @@ The Go service then runs a matrix-style feature harness:
 - performs a prefix lookup against the prefix-key table and verifies the returned rows by membership rather than unsafe ordering assumptions
 - fails the container if any of those paths break against the real Fluss cluster
 
+## Verified operations
+
+The current canonical Fluss+Paimon run is green for these real-cluster operations:
+
+- admin: `ListDatabases`, `DatabaseExists`, `GetDatabaseInfo`, temporary `CreateDatabase`/`DropDatabase`, `ListTables`, `TableExists`, `GetTableInfo`, `GetTableSchema`, temporary `CreateTable`/`AlterTable`/`DropTable`, `CreatePartition`, `ListPartitionInfos`, `ListPartitionInfosWithSpec`, `DropPartition`
+- log data: indexed-log append + limit scan, Arrow-log append + fetch + projection
+- type coverage: all-types log round-trip across the currently implemented scalar and composite Go row codecs
+- primary-key data: upsert, lookup, partial update, limit scan, delete, and prefix lookup
+
+For `ListDatabases`, some Fluss server responses currently populate `database_summary` while leaving `database_name` empty. The Go E2E log therefore prints both counts plus a resolved name list so the output reflects the actual cluster state clearly.
+
 The current harness is the canonical support-contract E2E for the implemented Go rows in [CLIENT_SUPPORT_MATRIX.md](../../CLIENT_SUPPORT_MATRIX.md).
 For overlapping features, the behavioral reference is the upstream Java client at `/Users/administrator/Documents/Labs/fluss/fluss-client`, adapted to the Go-native public API.
+
+Cluster-global admin APIs such as cluster config mutation, server tags, rebalance control, and ACL mutation are implemented in the Go SDK and covered by mock integration tests, but they are not currently part of the canonical Fluss+Paimon demo contract because this single-tablet demo stack is not the right environment to make those global mutations a stable end-to-end proof.
 
 The primary-key coverage is now exercised on Fluss `COMPACTED` KV tables, so the demo proves the Go SDK against the upstream Java-aligned compacted row/key semantics rather than only against the older indexed-row assumptions.
 

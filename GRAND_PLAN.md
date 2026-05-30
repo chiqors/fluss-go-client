@@ -60,6 +60,9 @@ Success means a Go team can:
 
 ### Progress Ledger
 
+- 2026-05-30: extended the canonical Fluss+Paimon real-cluster harness to cover safe admin lifecycle semantics as well, adding database create/drop, database info, table exists, temporary table create/alter/drop, and partition create/list/filter/drop checks while intentionally leaving cluster-global admin mutations outside the single-cluster demo contract.
+- 2026-05-30: finished stabilizing the canonical Fluss+Paimon admin lifecycle E2E against the real cluster, including valid Fluss descriptor JSON for temp database/table creation and clearer `ListDatabases` logging when the server returns only database summaries; the admin contract run is now green end-to-end.
+- 2026-05-30: completed the remaining currently-scoped admin parity batch from the upstream Java protocol definitions, adding Go support for cluster config describe/alter, server tag add/remove, rebalance start/progress/cancel, and ACL list/create/drop, with regenerated proto coverage and mock integration request assertions.
 - 2026-05-30: implemented the first missing admin-mutation parity slice using the upstream Java RPC contract as the wire reference, adding public Go support for `AlterTable`, `CreatePartition`, `DropPartition`, and filtered `ListPartitionInfos`, plus regenerated proto coverage and mock integration assertions for the request shapes.
 - 2026-05-30: completed the first primary-key snapshot batch-scan implementation slice by adding public snapshot storage config, a MinIO-backed remote snapshot downloader, a public `TableClient.SnapshotScanRows(...)` helper, and mock/integration coverage; after real-cluster validation showed Fluss snapshot local-reader portability is still messy across Pebble/RocksDB approaches, snapshot batch scan was pulled back out of the canonical demo support contract and remains deferred pending a cleaner implementation strategy.
 - 2026-05-30: started the primary-key snapshot batch-scan vertical slice by adding upstream-aligned KV snapshot admin metadata support in the Go proto/client layer (`GetLatestKvSnapshots`, `GetKvSnapshotMetadata`, `GetLakeSnapshot`) with local integration coverage; the remote snapshot-file scanner still remains to be implemented before snapshot batch scan can be claimed in the support matrix.
@@ -118,7 +121,7 @@ Success means a Go team can:
 The SDK is “production ready” only when all of these are true:
 
 - [ ] public API is intentionally versioned and documented
-- [ ] the main read/write/admin flows are covered by real-cluster tests
+- [~] the main read/write/admin flows are covered by real-cluster tests
 - [ ] common failure modes have deterministic retry or surfacing behavior
 - [ ] resource lifecycle is explicit and leak-resistant
 - [ ] authentication/security extension points are usable
@@ -272,21 +275,21 @@ Goal: ship a solid, documented admin surface.
 
 ### Nice-to-have parity after essentials
 
-- [ ] Offsets/list offsets flows
+- [x] Offsets/list offsets flows
 - [ ] Producer offsets flows
-- [ ] Cluster/rack/server-tag flows
-- [ ] Rebalance flows
-- [ ] ACL flows
+- [x] Cluster/rack/server-tag flows
+- [x] Rebalance flows
+- [x] ACL flows
 
 ### Tests
 
-- [ ] Real-cluster admin lifecycle matrix
+- [x] Real-cluster admin lifecycle matrix
 - [ ] Duplicate create / not-found / invalid-request error assertions
 - [ ] Concurrent admin call coverage
 
 Exit criteria:
 
-- [ ] admin users can manage common resources confidently from Go
+- [~] admin users can manage common resources confidently from Go
 
 ## Phase 4: Write Path
 

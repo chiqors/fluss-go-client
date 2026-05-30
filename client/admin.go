@@ -433,6 +433,265 @@ func (a *AdminClient) GetReadableLakeSnapshot(ctx context.Context, path TablePat
 	return a.getLakeSnapshot(ctx, path, nil, &readable)
 }
 
+func (a *AdminClient) ListACLs(ctx context.Context, filter ACLFilter) ([]ACLBinding, error) {
+	resp, err := a.invokeCoordinator(ctx, flusspb.ApiKey_ListAcls, "ListAclsRequest", "ListAclsResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.ListAclsRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected list acls request type %T", msg)
+		}
+		req.AclFilter = buildACLFilter(filter)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	r, ok := resp.(*flusspb.ListAclsResponse)
+	if !ok {
+		return nil, fmt.Errorf("fluss: unexpected list acls response type %T", resp)
+	}
+	out := make([]ACLBinding, 0, len(r.GetAcl()))
+	for _, item := range r.GetAcl() {
+		out = append(out, parseACLBinding(item))
+	}
+	return out, nil
+}
+
+func (a *AdminClient) CreateACLs(ctx context.Context, bindings []ACLBinding) ([]CreateACLResult, error) {
+	resp, err := a.invokeCoordinator(ctx, flusspb.ApiKey_CreateAcls, "CreateAclsRequest", "CreateAclsResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.CreateAclsRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected create acls request type %T", msg)
+		}
+		req.Acl = make([]*flusspb.PbAclInfo, 0, len(bindings))
+		for _, binding := range bindings {
+			req.Acl = append(req.Acl, buildACLBinding(binding))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	r, ok := resp.(*flusspb.CreateAclsResponse)
+	if !ok {
+		return nil, fmt.Errorf("fluss: unexpected create acls response type %T", resp)
+	}
+	out := make([]CreateACLResult, 0, len(r.GetAclRes()))
+	for _, item := range r.GetAclRes() {
+		result := CreateACLResult{ACL: parseACLBinding(item.GetAcl())}
+		if item.ErrorCode != nil {
+			code := item.GetErrorCode()
+			result.ErrorCode = &code
+		}
+		if item.ErrorMessage != nil {
+			msg := item.GetErrorMessage()
+			result.ErrorMessage = &msg
+		}
+		out = append(out, result)
+	}
+	return out, nil
+}
+
+func (a *AdminClient) DropACLs(ctx context.Context, filters []ACLFilter) ([]DropACLFilterResult, error) {
+	resp, err := a.invokeCoordinator(ctx, flusspb.ApiKey_DropAcls, "DropAclsRequest", "DropAclsResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.DropAclsRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected drop acls request type %T", msg)
+		}
+		req.AclFilter = make([]*flusspb.PbAclFilter, 0, len(filters))
+		for _, filter := range filters {
+			req.AclFilter = append(req.AclFilter, buildACLFilter(filter))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	r, ok := resp.(*flusspb.DropAclsResponse)
+	if !ok {
+		return nil, fmt.Errorf("fluss: unexpected drop acls response type %T", resp)
+	}
+	out := make([]DropACLFilterResult, 0, len(r.GetFilterResults()))
+	for _, item := range r.GetFilterResults() {
+		result := DropACLFilterResult{
+			MatchingACLs: make([]DropACLMatchingResult, 0, len(item.GetMatchingAcls())),
+		}
+		if item.ErrorCode != nil {
+			code := item.GetErrorCode()
+			result.ErrorCode = &code
+		}
+		if item.ErrorMessage != nil {
+			msg := item.GetErrorMessage()
+			result.ErrorMessage = &msg
+		}
+		for _, match := range item.GetMatchingAcls() {
+			entry := DropACLMatchingResult{ACL: parseACLBinding(match.GetAcl())}
+			if match.ErrorCode != nil {
+				code := match.GetErrorCode()
+				entry.ErrorCode = &code
+			}
+			if match.ErrorMessage != nil {
+				msg := match.GetErrorMessage()
+				entry.ErrorMessage = &msg
+			}
+			result.MatchingACLs = append(result.MatchingACLs, entry)
+		}
+		out = append(out, result)
+	}
+	return out, nil
+}
+
+func (a *AdminClient) DescribeClusterConfigs(ctx context.Context) ([]ClusterConfigEntry, error) {
+	resp, err := a.invokeCoordinator(ctx, flusspb.ApiKey_DescribeClusterConfigs, "DescribeClusterConfigsRequest", "DescribeClusterConfigsResponse", func(msg proto.Message) error {
+		_, ok := msg.(*flusspb.DescribeClusterConfigsRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected describe cluster configs request type %T", msg)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	r, ok := resp.(*flusspb.DescribeClusterConfigsResponse)
+	if !ok {
+		return nil, fmt.Errorf("fluss: unexpected describe cluster configs response type %T", resp)
+	}
+	out := make([]ClusterConfigEntry, 0, len(r.GetConfigs()))
+	for _, item := range r.GetConfigs() {
+		entry := ClusterConfigEntry{
+			Key:    item.GetConfigKey(),
+			Source: item.GetConfigSource(),
+		}
+		if item.ConfigValue != nil {
+			value := item.GetConfigValue()
+			entry.Value = &value
+		}
+		out = append(out, entry)
+	}
+	return out, nil
+}
+
+func (a *AdminClient) AlterClusterConfigs(ctx context.Context, changes []TableConfigChange) error {
+	_, err := a.invokeCoordinator(ctx, flusspb.ApiKey_AlterClusterConfigs, "AlterClusterConfigsRequest", "AlterClusterConfigsResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.AlterClusterConfigsRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected alter cluster configs request type %T", msg)
+		}
+		req.AlterConfigs = make([]*flusspb.PbAlterConfig, 0, len(changes))
+		for _, change := range changes {
+			req.AlterConfigs = append(req.AlterConfigs, buildAlterConfig(change))
+		}
+		return nil
+	})
+	return err
+}
+
+func (a *AdminClient) AddServerTag(ctx context.Context, serverIDs []int32, tag ServerTag) error {
+	_, err := a.invokeCoordinator(ctx, flusspb.ApiKey_AddServerTag, "AddServerTagRequest", "AddServerTagResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.AddServerTagRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected add server tag request type %T", msg)
+		}
+		req.ServerIds = append(req.ServerIds, serverIDs...)
+		req.ServerTag = proto.Int32(int32(tag))
+		return nil
+	})
+	return err
+}
+
+func (a *AdminClient) RemoveServerTag(ctx context.Context, serverIDs []int32, tag ServerTag) error {
+	_, err := a.invokeCoordinator(ctx, flusspb.ApiKey_RemoveServerTag, "RemoveServerTagRequest", "RemoveServerTagResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.RemoveServerTagRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected remove server tag request type %T", msg)
+		}
+		req.ServerIds = append(req.ServerIds, serverIDs...)
+		req.ServerTag = proto.Int32(int32(tag))
+		return nil
+	})
+	return err
+}
+
+func (a *AdminClient) Rebalance(ctx context.Context, goals []RebalanceGoal) (string, error) {
+	resp, err := a.invokeCoordinator(ctx, flusspb.ApiKey_Rebalance, "RebalanceRequest", "RebalanceResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.RebalanceRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected rebalance request type %T", msg)
+		}
+		for _, goal := range goals {
+			req.Goals = append(req.Goals, int32(goal))
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	r, ok := resp.(*flusspb.RebalanceResponse)
+	if !ok {
+		return "", fmt.Errorf("fluss: unexpected rebalance response type %T", resp)
+	}
+	return r.GetRebalanceId(), nil
+}
+
+func (a *AdminClient) ListRebalanceProgress(ctx context.Context, rebalanceID *string) (*RebalanceProgress, error) {
+	resp, err := a.invokeCoordinator(ctx, flusspb.ApiKey_ListRebalanceProgress, "ListRebalanceProgressRequest", "ListRebalanceProgressResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.ListRebalanceProgressRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected list rebalance progress request type %T", msg)
+		}
+		if rebalanceID != nil {
+			req.RebalanceId = proto.String(*rebalanceID)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	r, ok := resp.(*flusspb.ListRebalanceProgressResponse)
+	if !ok {
+		return nil, fmt.Errorf("fluss: unexpected list rebalance progress response type %T", resp)
+	}
+	if r.RebalanceId == nil {
+		return nil, nil
+	}
+	progress := &RebalanceProgress{
+		RebalanceID: r.GetRebalanceId(),
+		Tables:      make([]RebalanceTableProgress, 0, len(r.GetTableProgress())),
+	}
+	if r.RebalanceStatus != nil {
+		status := r.GetRebalanceStatus()
+		progress.Status = &status
+	}
+	for _, table := range r.GetTableProgress() {
+		tableProgress := RebalanceTableProgress{
+			TableID: table.GetTableId(),
+			Buckets: make([]RebalanceBucketProgress, 0, len(table.GetBucketsProgress())),
+		}
+		for _, bucket := range table.GetBucketsProgress() {
+			plan := parseRebalancePlan(bucket.GetRebalancePlan())
+			tableProgress.Buckets = append(tableProgress.Buckets, RebalanceBucketProgress{
+				Plan:   plan,
+				Status: bucket.GetRebalanceStatus(),
+			})
+		}
+		progress.Tables = append(progress.Tables, tableProgress)
+	}
+	return progress, nil
+}
+
+func (a *AdminClient) CancelRebalance(ctx context.Context, rebalanceID *string) error {
+	_, err := a.invokeCoordinator(ctx, flusspb.ApiKey_CancelRebalance, "CancelRebalanceRequest", "CancelRebalanceResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.CancelRebalanceRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected cancel rebalance request type %T", msg)
+		}
+		if rebalanceID != nil {
+			req.RebalanceId = proto.String(*rebalanceID)
+		}
+		return nil
+	})
+	return err
+}
+
 func (a *AdminClient) getLakeSnapshot(ctx context.Context, path TablePath, snapshotID *int64, readable *bool) (LakeSnapshot, error) {
 	resp, err := a.invokeAny(ctx, flusspb.ApiKey_GetLakeSnapshot, "GetLakeSnapshotRequest", "GetLakeSnapshotResponse", func(msg proto.Message) error {
 		req, ok := msg.(*flusspb.GetLakeSnapshotRequest)
@@ -552,4 +811,70 @@ func buildModifyColumn(change ModifyColumnChange) *flusspb.PbModifyColumn {
 		out.ColumnPositionType = proto.Int32(int32(*change.ColumnPositionType))
 	}
 	return out
+}
+
+func buildACLBinding(binding ACLBinding) *flusspb.PbAclInfo {
+	return &flusspb.PbAclInfo{
+		ResourceName:   proto.String(binding.ResourceName),
+		ResourceType:   proto.Int32(binding.ResourceType),
+		PrincipalName:  proto.String(binding.PrincipalName),
+		PrincipalType:  proto.String(binding.PrincipalType),
+		Host:           proto.String(binding.Host),
+		OperationType:  proto.Int32(binding.OperationType),
+		PermissionType: proto.Int32(binding.PermissionType),
+	}
+}
+
+func buildACLFilter(filter ACLFilter) *flusspb.PbAclFilter {
+	out := &flusspb.PbAclFilter{
+		ResourceType:   proto.Int32(filter.ResourceType),
+		OperationType:  proto.Int32(filter.OperationType),
+		PermissionType: proto.Int32(filter.PermissionType),
+	}
+	if filter.ResourceName != nil {
+		out.ResourceName = proto.String(*filter.ResourceName)
+	}
+	if filter.PrincipalName != nil {
+		out.PrincipalName = proto.String(*filter.PrincipalName)
+	}
+	if filter.PrincipalType != nil {
+		out.PrincipalType = proto.String(*filter.PrincipalType)
+	}
+	if filter.Host != nil {
+		out.Host = proto.String(*filter.Host)
+	}
+	return out
+}
+
+func parseACLBinding(item *flusspb.PbAclInfo) ACLBinding {
+	return ACLBinding{
+		ResourceName:   item.GetResourceName(),
+		ResourceType:   item.GetResourceType(),
+		PrincipalName:  item.GetPrincipalName(),
+		PrincipalType:  item.GetPrincipalType(),
+		Host:           item.GetHost(),
+		OperationType:  item.GetOperationType(),
+		PermissionType: item.GetPermissionType(),
+	}
+}
+
+func parseRebalancePlan(item *flusspb.PbRebalancePlanForBucket) RebalanceBucketPlan {
+	plan := RebalanceBucketPlan{
+		BucketID:         item.GetBucketId(),
+		OriginalReplicas: append([]int32(nil), item.GetOriginalReplicas()...),
+		NewReplicas:      append([]int32(nil), item.GetNewReplicas()...),
+	}
+	if item.PartitionId != nil {
+		partitionID := item.GetPartitionId()
+		plan.PartitionID = &partitionID
+	}
+	if item.OriginalLeader != nil {
+		leader := item.GetOriginalLeader()
+		plan.OriginalLeader = &leader
+	}
+	if item.NewLeader != nil {
+		leader := item.GetNewLeader()
+		plan.NewLeader = &leader
+	}
+	return plan
 }

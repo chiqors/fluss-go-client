@@ -230,6 +230,16 @@ func TestDialAndAdminFlow(t *testing.T) {
 			flusspb.ApiKey_ListPartitionInfos,
 			flusspb.ApiKey_CreatePartition,
 			flusspb.ApiKey_DropPartition,
+			flusspb.ApiKey_ListAcls,
+			flusspb.ApiKey_CreateAcls,
+			flusspb.ApiKey_DropAcls,
+			flusspb.ApiKey_DescribeClusterConfigs,
+			flusspb.ApiKey_AlterClusterConfigs,
+			flusspb.ApiKey_AddServerTag,
+			flusspb.ApiKey_RemoveServerTag,
+			flusspb.ApiKey_Rebalance,
+			flusspb.ApiKey_ListRebalanceProgress,
+			flusspb.ApiKey_CancelRebalance,
 			flusspb.ApiKey_LimitScan,
 			flusspb.ApiKey_PrefixLookup,
 		)), nil
@@ -393,6 +403,175 @@ func TestDialAndAdminFlow(t *testing.T) {
 		return mustMarshal(t, resp), nil
 	})
 
+	srv.on(flusspb.ApiKey_ListAcls, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.ListAclsRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if req.GetAclFilter().GetResourceType() != 1 || req.GetAclFilter().GetOperationType() != 3 || req.GetAclFilter().GetPermissionType() != 4 {
+			t.Fatalf("unexpected list acls filter: %#v", req.GetAclFilter())
+		}
+		return mustMarshal(t, &flusspb.ListAclsResponse{
+			Acl: []*flusspb.PbAclInfo{{
+				ResourceName:   proto.String("events"),
+				ResourceType:   proto.Int32(1),
+				PrincipalName:  proto.String("alice"),
+				PrincipalType:  proto.String("User"),
+				Host:           proto.String("*"),
+				OperationType:  proto.Int32(3),
+				PermissionType: proto.Int32(4),
+			}},
+		}), nil
+	})
+
+	srv.on(flusspb.ApiKey_CreateAcls, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.CreateAclsRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if len(req.GetAcl()) != 1 || req.GetAcl()[0].GetResourceName() != "events" || req.GetAcl()[0].GetPrincipalName() != "alice" {
+			t.Fatalf("unexpected create acls request: %#v", req)
+		}
+		return mustMarshal(t, &flusspb.CreateAclsResponse{
+			AclRes: []*flusspb.PbCreateAclRespInfo{{
+				Acl: req.GetAcl()[0],
+			}},
+		}), nil
+	})
+
+	srv.on(flusspb.ApiKey_DropAcls, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.DropAclsRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if len(req.GetAclFilter()) != 1 || req.GetAclFilter()[0].GetResourceType() != 1 {
+			t.Fatalf("unexpected drop acls request: %#v", req)
+		}
+		return mustMarshal(t, &flusspb.DropAclsResponse{
+			FilterResults: []*flusspb.PbDropAclsFilterResult{{
+				MatchingAcls: []*flusspb.PbDropAclsMatchingAcl{{
+					Acl: &flusspb.PbAclInfo{
+						ResourceName:   proto.String("events"),
+						ResourceType:   proto.Int32(1),
+						PrincipalName:  proto.String("alice"),
+						PrincipalType:  proto.String("User"),
+						Host:           proto.String("*"),
+						OperationType:  proto.Int32(3),
+						PermissionType: proto.Int32(4),
+					},
+				}},
+			}},
+		}), nil
+	})
+
+	srv.on(flusspb.ApiKey_DescribeClusterConfigs, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.DescribeClusterConfigsRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		return mustMarshal(t, &flusspb.DescribeClusterConfigsResponse{
+			Configs: []*flusspb.PbDescribeConfig{{
+				ConfigKey:    proto.String("client.connect-timeout"),
+				ConfigValue:  proto.String("240s"),
+				ConfigSource: proto.String("DYNAMIC_BROKER_CONFIG"),
+			}},
+		}), nil
+	})
+
+	srv.on(flusspb.ApiKey_AlterClusterConfigs, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.AlterClusterConfigsRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if len(req.GetAlterConfigs()) != 1 || req.GetAlterConfigs()[0].GetConfigKey() != "client.connect-timeout" || req.GetAlterConfigs()[0].GetConfigValue() != "300s" {
+			t.Fatalf("unexpected alter cluster configs request: %#v", req)
+		}
+		return mustMarshal(t, &flusspb.AlterClusterConfigsResponse{}), nil
+	})
+
+	srv.on(flusspb.ApiKey_AddServerTag, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.AddServerTagRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if len(req.GetServerIds()) != 2 || req.GetServerIds()[0] != 1 || req.GetServerIds()[1] != 2 || req.GetServerTag() != 9 {
+			t.Fatalf("unexpected add server tag request: %#v", req)
+		}
+		return mustMarshal(t, &flusspb.AddServerTagResponse{}), nil
+	})
+
+	srv.on(flusspb.ApiKey_RemoveServerTag, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.RemoveServerTagRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if len(req.GetServerIds()) != 2 || req.GetServerIds()[0] != 1 || req.GetServerIds()[1] != 2 || req.GetServerTag() != 9 {
+			t.Fatalf("unexpected remove server tag request: %#v", req)
+		}
+		return mustMarshal(t, &flusspb.RemoveServerTagResponse{}), nil
+	})
+
+	srv.on(flusspb.ApiKey_Rebalance, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.RebalanceRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if len(req.GetGoals()) != 2 || req.GetGoals()[0] != 1 || req.GetGoals()[1] != 2 {
+			t.Fatalf("unexpected rebalance request: %#v", req)
+		}
+		return mustMarshal(t, &flusspb.RebalanceResponse{
+			RebalanceId: proto.String("rb-1"),
+		}), nil
+	})
+
+	srv.on(flusspb.ApiKey_ListRebalanceProgress, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.ListRebalanceProgressRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if req.GetRebalanceId() != "rb-1" {
+			t.Fatalf("unexpected list rebalance progress request: %#v", req)
+		}
+		return mustMarshal(t, &flusspb.ListRebalanceProgressResponse{
+			RebalanceId:     proto.String("rb-1"),
+			RebalanceStatus: proto.Int32(2),
+			TableProgress: []*flusspb.PbRebalanceProgressForTable{{
+				TableId: proto.Int64(10),
+				BucketsProgress: []*flusspb.PbRebalanceProgressForBucket{{
+					RebalancePlan: &flusspb.PbRebalancePlanForBucket{
+						BucketId:         proto.Int32(0),
+						OriginalLeader:   proto.Int32(1),
+						NewLeader:        proto.Int32(2),
+						OriginalReplicas: []int32{1, 2},
+						NewReplicas:      []int32{2, 3},
+					},
+					RebalanceStatus: proto.Int32(1),
+				}},
+			}},
+		}), nil
+	})
+
+	srv.on(flusspb.ApiKey_CancelRebalance, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.CancelRebalanceRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if req.GetRebalanceId() != "rb-1" {
+			t.Fatalf("unexpected cancel rebalance request: %#v", req)
+		}
+		return mustMarshal(t, &flusspb.CancelRebalanceResponse{}), nil
+	})
+
 	srv.on(flusspb.ApiKey_LimitScan, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		req := &flusspb.LimitScanRequest{}
@@ -511,6 +690,93 @@ func TestDialAndAdminFlow(t *testing.T) {
 		{Key: "pt", Value: "2025"},
 	}, false); err != nil {
 		t.Fatalf("DropPartition() error = %v", err)
+	}
+
+	acls, err := cli.Admin().ListACLs(ctx, ACLFilter{
+		ResourceType:   1,
+		OperationType:  3,
+		PermissionType: 4,
+	})
+	if err != nil {
+		t.Fatalf("ListACLs() error = %v", err)
+	}
+	if len(acls) != 1 || acls[0].ResourceName != "events" || acls[0].PrincipalName != "alice" {
+		t.Fatalf("unexpected acl bindings: %#v", acls)
+	}
+
+	createACLResults, err := cli.Admin().CreateACLs(ctx, []ACLBinding{{
+		ResourceName:   "events",
+		ResourceType:   1,
+		PrincipalName:  "alice",
+		PrincipalType:  "User",
+		Host:           "*",
+		OperationType:  3,
+		PermissionType: 4,
+	}})
+	if err != nil {
+		t.Fatalf("CreateACLs() error = %v", err)
+	}
+	if len(createACLResults) != 1 || createACLResults[0].ACL.ResourceName != "events" {
+		t.Fatalf("unexpected create acl results: %#v", createACLResults)
+	}
+
+	dropACLResults, err := cli.Admin().DropACLs(ctx, []ACLFilter{{
+		ResourceType:   1,
+		OperationType:  3,
+		PermissionType: 4,
+	}})
+	if err != nil {
+		t.Fatalf("DropACLs() error = %v", err)
+	}
+	if len(dropACLResults) != 1 || len(dropACLResults[0].MatchingACLs) != 1 || dropACLResults[0].MatchingACLs[0].ACL.PrincipalName != "alice" {
+		t.Fatalf("unexpected drop acl results: %#v", dropACLResults)
+	}
+
+	clusterConfigs, err := cli.Admin().DescribeClusterConfigs(ctx)
+	if err != nil {
+		t.Fatalf("DescribeClusterConfigs() error = %v", err)
+	}
+	if len(clusterConfigs) != 1 || clusterConfigs[0].Key != "client.connect-timeout" || clusterConfigs[0].Value == nil || *clusterConfigs[0].Value != "240s" {
+		t.Fatalf("unexpected cluster configs: %#v", clusterConfigs)
+	}
+
+	clusterTimeout := "300s"
+	if err := cli.Admin().AlterClusterConfigs(ctx, []TableConfigChange{{
+		Key:   "client.connect-timeout",
+		Value: &clusterTimeout,
+		Op:    AlterConfigSet,
+	}}); err != nil {
+		t.Fatalf("AlterClusterConfigs() error = %v", err)
+	}
+
+	if err := cli.Admin().AddServerTag(ctx, []int32{1, 2}, ServerTag(9)); err != nil {
+		t.Fatalf("AddServerTag() error = %v", err)
+	}
+	if err := cli.Admin().RemoveServerTag(ctx, []int32{1, 2}, ServerTag(9)); err != nil {
+		t.Fatalf("RemoveServerTag() error = %v", err)
+	}
+
+	rebalanceID, err := cli.Admin().Rebalance(ctx, []RebalanceGoal{1, 2})
+	if err != nil {
+		t.Fatalf("Rebalance() error = %v", err)
+	}
+	if rebalanceID != "rb-1" {
+		t.Fatalf("unexpected rebalance id: %q", rebalanceID)
+	}
+
+	progress, err := cli.Admin().ListRebalanceProgress(ctx, &rebalanceID)
+	if err != nil {
+		t.Fatalf("ListRebalanceProgress() error = %v", err)
+	}
+	if progress == nil || progress.RebalanceID != "rb-1" || progress.Status == nil || *progress.Status != 2 {
+		t.Fatalf("unexpected rebalance progress: %#v", progress)
+	}
+	if len(progress.Tables) != 1 || len(progress.Tables[0].Buckets) != 1 || progress.Tables[0].Buckets[0].Plan.BucketID != 0 {
+		t.Fatalf("unexpected rebalance table progress: %#v", progress.Tables)
+	}
+
+	if err := cli.Admin().CancelRebalance(ctx, &rebalanceID); err != nil {
+		t.Fatalf("CancelRebalance() error = %v", err)
 	}
 
 	limitResult, err := cli.Table(TablePath{DatabaseName: "demo", TableName: "events"}).LimitScan(ctx, nil, 0, 10)

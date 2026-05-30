@@ -17,12 +17,13 @@ type featureCase struct {
 }
 
 type environment struct {
-	database    string
-	logTable    client.TablePath
-	arrowTable  client.TablePath
-	kvTable     client.TablePath
-	prefixTable client.TablePath
-	typesTable  client.TablePath
+	database         string
+	logTable         client.TablePath
+	arrowTable       client.TablePath
+	kvTable          client.TablePath
+	prefixTable      client.TablePath
+	typesTable       client.TablePath
+	adminPartitioned client.TablePath
 }
 
 type decodedRow struct {
@@ -57,6 +58,10 @@ func main() {
 			DatabaseName: database,
 			TableName:    getenv("FLUSS_TYPES_TABLE", "e2e_all_types"),
 		},
+		adminPartitioned: client.TablePath{
+			DatabaseName: database,
+			TableName:    getenv("FLUSS_ADMIN_PARTITION_TABLE", "e2e_admin_partitions"),
+		},
 	}
 
 	cli, err := client.Dial(ctx, client.Config{Endpoints: []string{getenv("FLUSS_BOOTSTRAP", "coordinator-server:9123")}})
@@ -72,6 +77,7 @@ func main() {
 		env.kvTable.TableName,
 		env.prefixTable.TableName,
 		env.typesTable.TableName,
+		env.adminPartitioned.TableName,
 	}); err != nil {
 		fatalf("wait for bootstrap tables: %v", err)
 	}
@@ -79,9 +85,14 @@ func main() {
 	checks := []featureCase{
 		{section: "Admin", name: "ListDatabases", run: runListDatabases},
 		{section: "Admin", name: "DatabaseExists", run: runDatabaseExists},
+		{section: "Admin", name: "GetDatabaseInfo", run: runGetDatabaseInfo},
+		{section: "Admin", name: "CreateAndDropDatabase", run: runCreateAndDropDatabase},
 		{section: "Admin", name: "ListTables", run: runListTables},
+		{section: "Admin", name: "TableExists", run: runTableExists},
 		{section: "Admin", name: "GetTableInfo", run: runGetTableInfo},
 		{section: "Admin", name: "GetTableSchema", run: runGetTableSchema},
+		{section: "Admin", name: "CreateAlterAndDropTable", run: runCreateAlterAndDropTable},
+		{section: "Admin", name: "PartitionLifecycle", run: runPartitionLifecycle},
 		{section: "Data Operations", name: "LogAppendAndLimitScan", run: runLogAppendAndLimitScan},
 		{section: "Data Operations", name: "ArrowLogAppendFetchAndProjection", run: runArrowLogAppendFetchAndProjection},
 		{section: "Data Operations", name: "AllTypesAppendAndLimitScan", run: runAllTypesAppendAndLimitScan},
@@ -108,7 +119,15 @@ func runListDatabases(ctx context.Context, cli *client.Client, env environment) 
 	if err != nil {
 		return fmt.Errorf("list databases: %w", err)
 	}
-	fmt.Printf("ListDatabases: %d databases (%d summaries)\n", len(names), len(summaries))
+	resolvedNames := append([]string(nil), names...)
+	if len(resolvedNames) == 0 && len(summaries) > 0 {
+		for _, summary := range summaries {
+			if summary.DatabaseName != "" {
+				resolvedNames = append(resolvedNames, summary.DatabaseName)
+			}
+		}
+	}
+	fmt.Printf("ListDatabases: names=%d summaries=%d resolved=%v\n", len(names), len(summaries), resolvedNames)
 	return nil
 }
 
@@ -124,13 +143,61 @@ func runDatabaseExists(ctx context.Context, cli *client.Client, env environment)
 	return nil
 }
 
+func runGetDatabaseInfo(ctx context.Context, cli *client.Client, env environment) error {
+	info, err := cli.Admin().GetDatabaseInfo(ctx, env.database)
+	if err != nil {
+		return fmt.Errorf("get database info: %w", err)
+	}
+	if len(info.JSON) == 0 {
+		return fmt.Errorf("get database info: empty database json")
+	}
+	fmt.Printf("GetDatabaseInfo(%s): created=%d modified=%d json_bytes=%d\n", env.database, info.CreatedTime, info.ModifiedTime, len(info.JSON))
+	return nil
+}
+
+func runCreateAndDropDatabase(ctx context.Context, cli *client.Client, env environment) error {
+	name := "go_e2e_admin_db"
+	if err := cli.Admin().DropDatabase(ctx, name, true, true); err != nil {
+		return fmt.Errorf("cleanup temp database: %w", err)
+	}
+	if err := cli.Admin().CreateDatabase(ctx, name, []byte(`{"version":1,"comment":"go e2e temp database","custom_properties":{}}`), false); err != nil {
+		return fmt.Errorf("create temp database: %w", err)
+	}
+	exists, err := cli.Admin().DatabaseExists(ctx, name)
+	if err != nil {
+		return fmt.Errorf("verify temp database exists: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("temp database %q was not created", name)
+	}
+	info, err := cli.Admin().GetDatabaseInfo(ctx, name)
+	if err != nil {
+		return fmt.Errorf("get temp database info: %w", err)
+	}
+	if len(info.JSON) == 0 {
+		return fmt.Errorf("get temp database info: empty database json")
+	}
+	if err := cli.Admin().DropDatabase(ctx, name, false, true); err != nil {
+		return fmt.Errorf("drop temp database: %w", err)
+	}
+	exists, err = cli.Admin().DatabaseExists(ctx, name)
+	if err != nil {
+		return fmt.Errorf("verify temp database drop: %w", err)
+	}
+	if exists {
+		return fmt.Errorf("temp database %q still exists after drop", name)
+	}
+	fmt.Printf("CreateDropDatabase: name=%s lifecycle_ok=true\n", name)
+	return nil
+}
+
 func runListTables(ctx context.Context, cli *client.Client, env environment) error {
 	tables, err := cli.Admin().ListTables(ctx, env.database)
 	if err != nil {
 		return fmt.Errorf("list tables: %w", err)
 	}
 	sort.Strings(tables)
-	required := []string{env.logTable.TableName, env.arrowTable.TableName, env.kvTable.TableName, env.prefixTable.TableName, env.typesTable.TableName}
+	required := []string{env.logTable.TableName, env.arrowTable.TableName, env.kvTable.TableName, env.prefixTable.TableName, env.typesTable.TableName, env.adminPartitioned.TableName}
 	for _, name := range required {
 		if !containsString(tables, name) {
 			return fmt.Errorf("list tables: missing %q in %v", name, tables)
@@ -140,8 +207,22 @@ func runListTables(ctx context.Context, cli *client.Client, env environment) err
 	return nil
 }
 
+func runTableExists(ctx context.Context, cli *client.Client, env environment) error {
+	for _, path := range []client.TablePath{env.logTable, env.arrowTable, env.kvTable, env.prefixTable, env.typesTable, env.adminPartitioned} {
+		exists, err := cli.Admin().TableExists(ctx, path)
+		if err != nil {
+			return fmt.Errorf("table exists %s.%s: %w", path.DatabaseName, path.TableName, err)
+		}
+		if !exists {
+			return fmt.Errorf("table exists %s.%s: expected true", path.DatabaseName, path.TableName)
+		}
+		fmt.Printf("TableExists(%s.%s): %v\n", path.DatabaseName, path.TableName, exists)
+	}
+	return nil
+}
+
 func runGetTableInfo(ctx context.Context, cli *client.Client, env environment) error {
-	for _, path := range []client.TablePath{env.logTable, env.arrowTable, env.kvTable, env.prefixTable, env.typesTable} {
+	for _, path := range []client.TablePath{env.logTable, env.arrowTable, env.kvTable, env.prefixTable, env.typesTable, env.adminPartitioned} {
 		info, err := cli.Table(path).Info(ctx)
 		if err != nil {
 			return fmt.Errorf("table %s.%s info: %w", path.DatabaseName, path.TableName, err)
@@ -158,7 +239,7 @@ func runGetTableInfo(ctx context.Context, cli *client.Client, env environment) e
 }
 
 func runGetTableSchema(ctx context.Context, cli *client.Client, env environment) error {
-	for _, path := range []client.TablePath{env.logTable, env.arrowTable, env.kvTable, env.prefixTable, env.typesTable} {
+	for _, path := range []client.TablePath{env.logTable, env.arrowTable, env.kvTable, env.prefixTable, env.typesTable, env.adminPartitioned} {
 		schema, err := cli.Table(path).Schema(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("table %s.%s schema: %w", path.DatabaseName, path.TableName, err)
@@ -168,6 +249,109 @@ func runGetTableSchema(ctx context.Context, cli *client.Client, env environment)
 		}
 		fmt.Printf("GetTableSchema %s.%s: SchemaID=%d\n", path.DatabaseName, path.TableName, schema.SchemaID)
 	}
+	return nil
+}
+
+func runCreateAlterAndDropTable(ctx context.Context, cli *client.Client, env environment) error {
+	path := client.TablePath{DatabaseName: env.database, TableName: "go_e2e_admin_table"}
+	if err := cli.Admin().DropTable(ctx, path, true); err != nil {
+		return fmt.Errorf("cleanup temp table: %w", err)
+	}
+	createJSON := []byte(`{
+		"version":1,
+		"schema":{
+			"version":1,
+			"columns":[
+				{"name":"id","data_type":{"type":"BIGINT","nullable":true},"id":0},
+				{"name":"name","data_type":{"type":"STRING","nullable":true},"id":1}
+			],
+			"highest_field_id":1
+		},
+		"comment":"go e2e temp table",
+		"partition_key":[],
+		"bucket_key":[],
+		"bucket_count":1,
+		"properties":{},
+		"custom_properties":{}
+	}`)
+	if err := cli.Admin().CreateTable(ctx, path, createJSON, false); err != nil {
+		return fmt.Errorf("create temp table: %w", err)
+	}
+	exists, err := cli.Admin().TableExists(ctx, path)
+	if err != nil {
+		return fmt.Errorf("verify temp table exists: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("temp table %s.%s was not created", path.DatabaseName, path.TableName)
+	}
+	value := "300s"
+	if err := cli.Admin().AlterTable(ctx, path, []client.AlterTableChange{
+		client.TableConfigChange{Key: "client.connect-timeout", Value: &value, Op: client.AlterConfigSet},
+	}, false); err != nil {
+		return fmt.Errorf("alter temp table: %w", err)
+	}
+	info, err := cli.Table(path).Info(ctx)
+	if err != nil {
+		return fmt.Errorf("get temp table info after alter: %w", err)
+	}
+	if len(info.JSON) == 0 {
+		return fmt.Errorf("get temp table info after alter: empty table json")
+	}
+	if err := cli.Admin().DropTable(ctx, path, false); err != nil {
+		return fmt.Errorf("drop temp table: %w", err)
+	}
+	exists, err = cli.Admin().TableExists(ctx, path)
+	if err != nil {
+		return fmt.Errorf("verify temp table drop: %w", err)
+	}
+	if exists {
+		return fmt.Errorf("temp table %s.%s still exists after drop", path.DatabaseName, path.TableName)
+	}
+	fmt.Printf("CreateAlterDropTable: table=%s.%s lifecycle_ok=true\n", path.DatabaseName, path.TableName)
+	return nil
+}
+
+func runPartitionLifecycle(ctx context.Context, cli *client.Client, env environment) error {
+	path := env.adminPartitioned
+	spec := client.PartitionSpec{{Key: "pt", Value: "2025"}}
+	if err := cli.Admin().DropPartition(ctx, path, spec, true); err != nil {
+		return fmt.Errorf("cleanup temp partition: %w", err)
+	}
+	before, err := cli.Admin().ListPartitionInfos(ctx, path)
+	if err != nil {
+		return fmt.Errorf("list partition infos before create: %w", err)
+	}
+	if err := cli.Admin().CreatePartition(ctx, path, spec, false); err != nil {
+		return fmt.Errorf("create partition: %w", err)
+	}
+	after, err := cli.Admin().ListPartitionInfosWithSpec(ctx, path, spec)
+	if err != nil {
+		return fmt.Errorf("list partition infos with spec after create: %w", err)
+	}
+	if len(after) == 0 {
+		return fmt.Errorf("list partition infos with spec after create: no matching partition returned")
+	}
+	found := false
+	for _, info := range after {
+		if samePartitionSpec(info.PartitionSpec, spec) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("created partition spec %v not returned in filtered partition list %v", spec, after)
+	}
+	if err := cli.Admin().DropPartition(ctx, path, spec, false); err != nil {
+		return fmt.Errorf("drop partition: %w", err)
+	}
+	final, err := cli.Admin().ListPartitionInfosWithSpec(ctx, path, spec)
+	if err != nil {
+		return fmt.Errorf("list partition infos with spec after drop: %w", err)
+	}
+	if len(final) != 0 {
+		return fmt.Errorf("partition still returned after drop: %v", final)
+	}
+	fmt.Printf("PartitionLifecycle: table=%s.%s before=%d after_create=%d after_drop=%d\n", path.DatabaseName, path.TableName, len(before), len(after), len(final))
 	return nil
 }
 
@@ -695,6 +879,18 @@ func containsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func samePartitionSpec(got []client.PartitionKV, want client.PartitionSpec) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i].Key != want[i].Key || got[i].Value != want[i].Value {
+			return false
+		}
+	}
+	return true
 }
 
 func rowsEqual(got, want []any) bool {
