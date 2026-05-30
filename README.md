@@ -15,7 +15,7 @@ Current implementation status:
 - API version negotiation and pluggable auth hook
 - Metadata cache and bucket leader routing
 - Admin APIs for database/table/schema/partition metadata
-- Raw table operations for append, upsert, delete, lookup, prefix lookup, fetch log, limit scan, and KV scan
+- Raw table operations for append, upsert, partial update, delete, lookup, prefix lookup, fetch log, limit scan, and KV scan
 - Real-cluster E2E coverage for indexed log round-trips, Arrow log projection, primary-key data operations, and Paimon-backed deployment validation
 
 The current data APIs operate on Fluss wire-format record batches as raw bytes. Arrow-first row

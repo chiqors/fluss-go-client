@@ -68,6 +68,7 @@ The Go service then runs a matrix-style feature harness:
 - appends Arrow log rows, fetches them back, and verifies column projection through `FetchLogWithOptions(...)` against a real `ARROW` log table
 - appends and scans a dedicated all-types log row covering scalar, temporal, decimal, and nested `ARRAY/MAP/ROW` codec support
 - upserts indexed primary-key rows and verifies KV lookup round-trips
+- applies an indexed primary-key partial update and verifies the untouched column is preserved by a follow-up lookup
 - deletes a primary-key row and verifies lookup returns no value
 - performs a prefix lookup against the prefix-key table and verifies the returned rows by membership rather than unsafe ordering assumptions
 - fails the container if any of those paths break against the real Fluss cluster

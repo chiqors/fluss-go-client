@@ -64,6 +64,8 @@ Success means a Go team can:
 - 2026-05-30: added the first Fluss-specific Arrow log batch path in Go, including public Arrow append/decode helpers, mock integration coverage, a dedicated `ARROW` demo table, and real-cluster E2E intent for projection-backed log fetch semantics.
 - 2026-05-30: added projection-aware public log fetch options and request-level test coverage; discovered via real-cluster validation that Fluss only supports column projection for `ARROW` log format, so the `INDEXED`-table demo and support matrix were narrowed back to partial support.
 - 2026-05-30: promoted primary-key limit scan into a decoded public data operation with shared limit-scan row helpers and real-cluster E2E coverage, moving another support-matrix data-operation row out of raw-byte-only usage.
+- 2026-05-30: added an explicit public indexed partial-update helper for primary-key tables and extended the Fluss+Paimon support-contract E2E to verify Java-aligned partial-update semantics through a lookup round-trip.
+- 2026-05-30: promoted primary-key typed row helpers into the public `client/` surface with decoded lookup, single-row lookup, and row upsert coverage; during follow-up validation we confirmed true snapshot batch scanning still needs the separate Java-aligned snapshot-metadata/file path before it can be claimed in the support contract.
 - 2026-05-30: exposed Go-native public row/schema/type constructors and log-batch decode helpers through `client/`; validated all implemented scalar and composite data types in the Fluss+Paimon E2E all-types log round-trip.
 - 2026-05-30: validated the Go demo against the real Fluss/Paimon stack, including prefix lookup round-trip on `e2e_customer_orders`; updated the demo docs and support matrix to match the current behavior.
 - 2026-05-30: reworked the Fluss/Paimon Go E2E into a strict support-contract harness aligned to upstream Java client semantics for append, log limit scan, lookup, delete, and prefix lookup; updated docs and support matrix to reflect `GetTableSchema`, delete, and Paimon-backed demo coverage.
@@ -142,11 +144,11 @@ This Go client should pursue parity in layers rather than trying to clone every 
 ### Parity strategy
 
 - [x] Foundation: protocol, transport, metadata, basic admin
-- [~] Raw table data operations: partly present, still low-level
+- [~] Raw table data operations: broad public coverage now exists for admin, log, lookup, delete, projection, and KV limit-scan flows, but higher-level writer/scanner ergonomics and true snapshot-batch parity are still pending
 - [ ] Writer subsystem parity
 - [ ] Scanner subsystem parity
 - [x] Lookup ergonomics parity
-- [ ] Typed mapping parity
+- [~] Typed mapping parity
 - [ ] Metrics parity
 - [ ] Security token parity
 - [ ] Lake snapshot / lease parity

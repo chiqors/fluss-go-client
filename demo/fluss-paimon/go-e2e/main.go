@@ -86,6 +86,7 @@ func main() {
 		{section: "Data Operations", name: "ArrowLogAppendFetchAndProjection", run: runArrowLogAppendFetchAndProjection},
 		{section: "Data Operations", name: "AllTypesAppendAndLimitScan", run: runAllTypesAppendAndLimitScan},
 		{section: "Data Operations", name: "PrimaryKeyUpsertAndLookup", run: runPrimaryKeyUpsertAndLookup},
+		{section: "Data Operations", name: "PrimaryKeyPartialUpdate", run: runPrimaryKeyPartialUpdate},
 		{section: "Data Operations", name: "PrimaryKeyLimitScan", run: runPrimaryKeyLimitScan},
 		{section: "Data Operations", name: "PrimaryKeyDelete", run: runPrimaryKeyDelete},
 		{section: "Data Operations", name: "PrimaryKeyPrefixLookup", run: runPrimaryKeyPrefixLookup},
@@ -326,7 +327,7 @@ func runPrimaryKeyUpsertAndLookup(ctx context.Context, cli *client.Client, env e
 		fmt.Printf("UpsertKV[%d]: bucket=%d log_end_offset=%d\n", i, result[0].BucketID, result[0].LogEndOffset)
 	}
 
-	lookupRows, err := lookupIndexedRows(ctx, cli, env.kvTable, schema, rows, []int{0})
+	lookupRows, err := cli.Table(env.kvTable).LookupIndexedRows(ctx, 0, schema, rows, []int{0})
 	if err != nil {
 		return fmt.Errorf("lookup kv rows: %w", err)
 	}
@@ -334,10 +335,10 @@ func runPrimaryKeyUpsertAndLookup(ctx context.Context, cli *client.Client, env e
 		return fmt.Errorf("lookup kv rows: got %d rows, want %d", len(lookupRows), len(rows))
 	}
 	for i := range rows {
-		if !rowsEqual(lookupRows[i].values, rows[i].Values) {
-			return fmt.Errorf("lookup kv row %d: got %v, want %v", i, lookupRows[i].values, rows[i].Values)
+		if !rowsEqual(lookupRows[i], rows[i].Values) {
+			return fmt.Errorf("lookup kv row %d: got %v, want %v", i, lookupRows[i], rows[i].Values)
 		}
-		fmt.Printf("LookupKV Row[%d]: %s\n", i, formatRow(fields, lookupRows[i].values))
+		fmt.Printf("LookupKV Row[%d]: %s\n", i, formatRow(fields, lookupRows[i]))
 	}
 	return nil
 }
@@ -444,6 +445,38 @@ func runAllTypesAppendAndLimitScan(ctx context.Context, cli *client.Client, env 
 	return nil
 }
 
+func runPrimaryKeyPartialUpdate(ctx context.Context, cli *client.Client, env environment) error {
+	schema := client.NewSchema(
+		client.Int64Type(),
+		client.StringType(),
+		client.StringType(),
+	)
+	fields := []string{"customer_id", "customer_name", "customer_tier"}
+	row := mustRows(schema, [][]any{
+		{int64(42), nil, "diamond"},
+	})[0]
+
+	result, err := cli.Table(env.kvTable).PartialUpdateIndexedRow(ctx, 0, row, []int32{0, 2})
+	if err != nil {
+		return fmt.Errorf("partial update kv row: %w", err)
+	}
+	if len(result) != 1 {
+		return fmt.Errorf("partial update kv row: unexpected result count %d", len(result))
+	}
+	fmt.Printf("PartialUpdateKV: bucket=%d log_end_offset=%d target_columns=%v\n", result[0].BucketID, result[0].LogEndOffset, []int32{0, 2})
+
+	lookup, err := cli.Table(env.kvTable).LookupIndexedRow(ctx, 0, schema, row, []int{0})
+	if err != nil {
+		return fmt.Errorf("lookup partial-update row: %w", err)
+	}
+	want := []any{int64(42), "Ada Lovelace", "diamond"}
+	if !rowsEqual(lookup, want) {
+		return fmt.Errorf("lookup partial-update row: got %v, want %v", lookup, want)
+	}
+	fmt.Printf("PartialUpdateKV Lookup: %s\n", formatRow(fields, lookup))
+	return nil
+}
+
 func runPrimaryKeyDelete(ctx context.Context, cli *client.Client, env environment) error {
 	schema := client.NewSchema(
 		client.Int64Type(),
@@ -459,7 +492,7 @@ func runPrimaryKeyDelete(ctx context.Context, cli *client.Client, env environmen
 		return fmt.Errorf("delete row: %w", err)
 	}
 
-	found, err := lookupOptionalIndexedRow(ctx, cli, env.kvTable, schema, row, []int{0})
+	found, err := cli.Table(env.kvTable).LookupIndexedRow(ctx, 0, schema, row, []int{0})
 	if err != nil {
 		return fmt.Errorf("lookup deleted row: %w", err)
 	}
@@ -566,65 +599,6 @@ func runPrimaryKeyPrefixLookup(ctx context.Context, cli *client.Client, env envi
 		fmt.Printf("PrefixLookup Row[%d]: %s\n", i, formatRow(row.fields, row.values))
 	}
 	return nil
-}
-
-func lookupIndexedRows(ctx context.Context, cli *client.Client, path client.TablePath, schema client.Schema, rows []client.Row, keyColumns []int) ([]decodedRow, error) {
-	req := client.LookupBucketRequest{BucketID: 0}
-	for _, row := range rows {
-		key, err := row.EncodeLookupKey(keyColumns...)
-		if err != nil {
-			return nil, fmt.Errorf("encode lookup key: %w", err)
-		}
-		req.Keys = append(req.Keys, key)
-	}
-	result, err := cli.Table(path).Lookup(ctx, []client.LookupBucketRequest{req}, nil, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	if len(result) != 1 {
-		return nil, fmt.Errorf("unexpected lookup result count %d", len(result))
-	}
-	if len(result[0].Values) != len(rows) {
-		return nil, fmt.Errorf("unexpected lookup value count %d", len(result[0].Values))
-	}
-	out := make([]decodedRow, 0, len(result[0].Values))
-	for _, payload := range result[0].Values {
-		if payload == nil {
-			out = append(out, decodedRow{})
-			continue
-		}
-		values, err := client.DecodeIndexedLookupValuePayload(schema, payload)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, decodedRow{values: values})
-	}
-	return out, nil
-}
-
-func lookupOptionalIndexedRow(ctx context.Context, cli *client.Client, path client.TablePath, schema client.Schema, row client.Row, keyColumns []int) ([]any, error) {
-	key, err := row.EncodeLookupKey(keyColumns...)
-	if err != nil {
-		return nil, fmt.Errorf("encode lookup key: %w", err)
-	}
-	result, err := cli.Table(path).Lookup(ctx, []client.LookupBucketRequest{{
-		BucketID: 0,
-		Keys:     [][]byte{key},
-	}}, nil, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	if len(result) != 1 || len(result[0].Values) != 1 {
-		return nil, fmt.Errorf("unexpected lookup result %#v", result)
-	}
-	if result[0].Values[0] == nil {
-		return nil, nil
-	}
-	values, err := client.DecodeIndexedLookupValuePayload(schema, result[0].Values[0])
-	if err != nil {
-		return nil, err
-	}
-	return values, nil
 }
 
 func sameDecodedRowSet(got, want []decodedRow) bool {

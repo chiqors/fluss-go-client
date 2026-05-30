@@ -25,11 +25,11 @@ These operations live under the table append, scan, upsert, and lookup surfaces.
 | Log | Batch Scan with Limit | ✔️ | ✔️ |
 | Primary Key | Upsert | ✔️ | ✔️ |
 | Primary Key | Upsert with Partial Update | ✔️ | ✔️ |
-| Primary Key | Typed Upsert | ✔️ |  |
+| Primary Key | Typed Upsert | ✔️ | ✔️ |
 | Primary Key | Delete | ✔️ | ✔️ |
 | Primary Key | Lookup | ✔️ | ✔️ |
 | Primary Key | Prefix Lookup | ✔️ | ✔️ |
-| Primary Key | Typed Lookup | ✔️ |  |
+| Primary Key | Typed Lookup | ✔️ | ✔️ |
 | Primary Key | Batch Scan with Limit | ✔️ | ✔️ |
 | Primary Key | Batch Scan (Snapshot) | ✔️ |  |
 
