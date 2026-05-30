@@ -2269,6 +2269,366 @@ func TestAppendWriterFlushRetriesOnlyRetryableFailedBuckets(t *testing.T) {
 	}
 }
 
+func TestAppendWriterBufferLimitByBytes(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata)), nil
+	})
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "logs"}, 21, 2)), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	writer := cli.Table(TablePath{DatabaseName: "demo", TableName: "logs"}).NewAppendWriter(AppendOptions{
+		MaxBufferedBatches: 4,
+		MaxBufferedBytes:   3,
+	})
+	if _, err := writer.Write(ctx, []BucketRecordBatch{{BucketID: 0, Records: []byte("ab")}}); err != nil {
+		t.Fatalf("first write error = %v", err)
+	}
+	if writer.BufferedBytes() != 2 {
+		t.Fatalf("expected 2 buffered bytes, got %d", writer.BufferedBytes())
+	}
+	if _, err := writer.Write(ctx, []BucketRecordBatch{{BucketID: 0, Records: []byte("cd")}}); err == nil || err != ErrBufferFull {
+		t.Fatalf("expected ErrBufferFull for byte limit, got %v", err)
+	}
+}
+
+func TestAppendWriterLingerAutoFlush(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata, flusspb.ApiKey_ProduceLog)), nil
+	})
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "logs"}, 21, 2)), nil
+	})
+
+	flushed := make(chan struct{}, 1)
+	srv.on(flusspb.ApiKey_ProduceLog, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		select {
+		case flushed <- struct{}{}:
+		default:
+		}
+		return mustMarshal(t, &flusspb.ProduceLogResponse{
+			BucketsResp: []*flusspb.PbProduceLogRespForBucket{{
+				BucketId:   proto.Int32(0),
+				BaseOffset: proto.Int64(1),
+			}},
+		}), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	writer := cli.Table(TablePath{DatabaseName: "demo", TableName: "logs"}).NewAppendWriter(AppendOptions{
+		MaxBufferedBatches: 4,
+		Linger:             20 * time.Millisecond,
+	})
+	if _, err := writer.Write(ctx, []BucketRecordBatch{{BucketID: 0, Records: []byte("ab")}}); err != nil {
+		t.Fatalf("writer.Write() error = %v", err)
+	}
+	select {
+	case <-flushed:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("expected auto-flush from linger timer")
+	}
+	if writer.BufferedLen() != 0 {
+		t.Fatalf("expected empty buffer after auto-flush, got %d", writer.BufferedLen())
+	}
+}
+
+func TestAppendWriterFlushCancellationRestoresPending(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata, flusspb.ApiKey_ProduceLog)), nil
+	})
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "logs"}, 21, 2)), nil
+	})
+	srv.on(flusspb.ApiKey_ProduceLog, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return nil, context.DeadlineExceeded
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	writer := cli.Table(TablePath{DatabaseName: "demo", TableName: "logs"}).NewAppendWriter(AppendOptions{
+		MaxBufferedBatches: 4,
+	})
+	if _, err := writer.Write(ctx, []BucketRecordBatch{{BucketID: 0, Records: []byte("ab")}}); err != nil {
+		t.Fatalf("writer.Write() error = %v", err)
+	}
+	flushCtx, flushCancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	defer flushCancel()
+	if _, err := writer.Flush(flushCtx); err == nil {
+		t.Fatal("expected flush cancellation error")
+	}
+	if writer.BufferedLen() != 1 {
+		t.Fatalf("expected pending batch to be restored after failed flush, got %d", writer.BufferedLen())
+	}
+}
+
+func TestAppendWriterBlockOnBufferFullUnblocksAfterFlush(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata, flusspb.ApiKey_ProduceLog)), nil
+	})
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "logs"}, 21, 2)), nil
+	})
+	srv.on(flusspb.ApiKey_ProduceLog, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, &flusspb.ProduceLogResponse{
+			BucketsResp: []*flusspb.PbProduceLogRespForBucket{{
+				BucketId:   proto.Int32(0),
+				BaseOffset: proto.Int64(1),
+			}},
+		}), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	writer := cli.Table(TablePath{DatabaseName: "demo", TableName: "logs"}).NewAppendWriter(AppendOptions{
+		MaxBufferedBatches: 1,
+		MaxBufferedBytes:   10,
+		BlockOnBufferFull:  true,
+	})
+	if _, err := writer.Write(ctx, []BucketRecordBatch{{BucketID: 0, Records: []byte("a")}}); err != nil {
+		t.Fatalf("initial write error = %v", err)
+	}
+
+	writeDone := make(chan error, 1)
+	go func() {
+		_, err := writer.Write(ctx, []BucketRecordBatch{{BucketID: 0, Records: []byte("b")}})
+		writeDone <- err
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case err := <-writeDone:
+		t.Fatalf("expected second write to block, got early result %v", err)
+	default:
+	}
+
+	if _, err := writer.Flush(ctx); err != nil {
+		t.Fatalf("flush error = %v", err)
+	}
+	select {
+	case err := <-writeDone:
+		if err != nil {
+			t.Fatalf("expected blocked write to succeed after flush, got %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("expected blocked write to unblock after flush")
+	}
+}
+
+func TestAppendWriterBlockOnBufferFullHonorsContextCancel(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata)), nil
+	})
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "logs"}, 21, 2)), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	writer := cli.Table(TablePath{DatabaseName: "demo", TableName: "logs"}).NewAppendWriter(AppendOptions{
+		MaxBufferedBatches: 1,
+		MaxBufferedBytes:   10,
+		BlockOnBufferFull:  true,
+	})
+	if _, err := writer.Write(ctx, []BucketRecordBatch{{BucketID: 0, Records: []byte("a")}}); err != nil {
+		t.Fatalf("initial write error = %v", err)
+	}
+
+	blockedCtx, blockedCancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	defer blockedCancel()
+	if _, err := writer.Write(blockedCtx, []BucketRecordBatch{{BucketID: 0, Records: []byte("b")}}); err == nil {
+		t.Fatal("expected blocked write to return context error")
+	}
+}
+
+func TestInitWriter(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata, flusspb.ApiKey_InitWriter)), nil
+	})
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		host, portStr, err := net.SplitHostPort(srv.addr)
+		if err != nil {
+			return nil, err
+		}
+		var port int
+		if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+			return nil, err
+		}
+		return mustMarshal(t, &flusspb.MetadataResponse{
+			CoordinatorServer: serverNode(1, host, int32(port)),
+			TabletServers:     []*flusspb.PbServerNode{serverNode(1, host, int32(port))},
+		}), nil
+	})
+	srv.on(flusspb.ApiKey_InitWriter, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.InitWriterRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if len(req.GetTablePath()) != 2 {
+			t.Fatalf("expected 2 table paths, got %d", len(req.GetTablePath()))
+		}
+		if req.GetTablePath()[0].GetDatabaseName() != "demo" || req.GetTablePath()[0].GetTableName() != "logs" {
+			t.Fatalf("unexpected first table path: %#v", req.GetTablePath()[0])
+		}
+		if req.GetTablePath()[1].GetDatabaseName() != "demo" || req.GetTablePath()[1].GetTableName() != "kv" {
+			t.Fatalf("unexpected second table path: %#v", req.GetTablePath()[1])
+		}
+		return mustMarshal(t, &flusspb.InitWriterResponse{
+			WriterId: proto.Int64(12345),
+		}), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	result, err := cli.Admin().InitWriter(ctx, []TablePath{
+		{DatabaseName: "demo", TableName: "logs"},
+		{DatabaseName: "demo", TableName: "kv"},
+	})
+	if err != nil {
+		t.Fatalf("InitWriter() error = %v", err)
+	}
+	if result.WriterID != 12345 {
+		t.Fatalf("unexpected writer id: %#v", result)
+	}
+}
+
 func TestPartialUpdateIndexedRowUsesTargetColumnsAndNullablePayload(t *testing.T) {
 	srv := newMockFlussServer(t)
 	defer srv.Close()

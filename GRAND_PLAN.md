@@ -66,6 +66,10 @@ Success means a Go team can:
 - 2026-05-30: productized the first public writer slice by upgrading `AppendWriter` and `UpsertWriter` from thin pass-through helpers into buffered writers with explicit `Flush(ctx)`, buffered-capacity controls, `CloseWithContext(ctx)` flush-on-close semantics, and integration coverage for buffer limits and lifecycle behavior.
 - 2026-05-30: added the first writer flush retry hardening pass, teaching log and KV write flush paths to perform a one-time metadata refresh and reroute retry for leader/routing-style write failures, with integration coverage for append and upsert retry-after-refresh behavior.
 - 2026-05-30: added partial write-failure surfacing for log and KV writes, so mixed per-bucket outcomes now preserve successful bucket results, return structured `PartialWriteError` failures, and retry only the retryable failed buckets after metadata refresh.
+- 2026-05-30: completed the next writer lifecycle slice by adding byte-size-based buffering, linger-driven auto-flush, buffered-byte introspection, and safer flush/close failure handling that restores pending batches on cancellation or send failure, with integration coverage for byte limits, auto-flush, and pending restoration.
+- 2026-05-30: added the first explicit writer backpressure mode, keeping default fail-fast `ErrBufferFull` behavior while introducing opt-in blocking-on-buffer-full writes with context-aware wakeup after flush frees capacity, plus integration coverage for unblock-after-flush and cancellation while blocked.
+- 2026-05-30: added public `InitWriter` protocol support to the Go admin/client layer with integration coverage, making the upstream writer-id negotiation RPC available in Go while recording that full idempotent writer semantics still require a deeper write-batch state design rather than only lifecycle polish.
+- 2026-05-30: landed the first internal idempotence foundation slice by teaching indexed-row, compacted-KV, and Arrow log batch encoders to carry upstream-style writer ID and batch sequence headers, with focused codec tests; higher-level writer sequencing and retry-orchestration still remain to be wired on top.
 - 2026-05-30: completed the remaining currently-scoped admin parity batch from the upstream Java protocol definitions, adding Go support for cluster config describe/alter, server tag add/remove, rebalance start/progress/cancel, and ACL list/create/drop, with regenerated proto coverage and mock integration request assertions.
 - 2026-05-30: implemented the first missing admin-mutation parity slice using the upstream Java RPC contract as the wire reference, adding public Go support for `AlterTable`, `CreatePartition`, `DropPartition`, and filtered `ListPartitionInfos`, plus regenerated proto coverage and mock integration assertions for the request shapes.
 - 2026-05-30: completed the first primary-key snapshot batch-scan implementation slice by adding public snapshot storage config, a MinIO-backed remote snapshot downloader, a public `TableClient.SnapshotScanRows(...)` helper, and mock/integration coverage; after real-cluster validation showed Fluss snapshot local-reader portability is still messy across Pebble/RocksDB approaches, snapshot batch scan was pulled back out of the canonical demo support contract and remains deferred pending a cleaner implementation strategy.
@@ -314,9 +318,9 @@ Goal: move from raw RPC operations to usable production writers.
 - [~] `UpsertWriter`
 - [x] explicit `Flush()` semantics
 - [x] explicit `Close()` semantics
-- [ ] backpressure behavior
+- [~] backpressure behavior
 - [~] batch size controls
-- [ ] linger/flush interval controls
+- [~] linger/flush interval controls
 - [ ] per-bucket routing and retry behavior
 
 ### Partitioning / bucket assignment
@@ -330,8 +334,9 @@ Goal: move from raw RPC operations to usable production writers.
 
 - [~] stale metadata retry on write
 - [~] partial failure handling
-- [ ] idempotence strategy decision
-- [ ] timeout and cancellation semantics
+- [~] idempotence strategy decision
+- [~] timeout and cancellation semantics
+- [~] batch header writer-state encoding foundation
 
 ### Tests
 

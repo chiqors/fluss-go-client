@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/chiqors/fluss-go-client/internal/metadata"
 	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
@@ -19,16 +20,26 @@ type TableClient struct {
 }
 
 func (t *TableClient) NewAppendWriter(opts AppendOptions) *AppendWriter {
+	state := &appendWriterState{
+		writeFn: t.AppendLog,
+		opts:    opts,
+	}
+	state.cond = sync.NewCond(&state.mu)
 	return &AppendWriter{
 		table: t,
-		opts:  opts,
+		state: state,
 	}
 }
 
 func (t *TableClient) NewUpsertWriter(opts UpsertOptions) *UpsertWriter {
+	state := &upsertWriterState{
+		writeFn: t.UpsertKV,
+		opts:    opts,
+	}
+	state.cond = sync.NewCond(&state.mu)
 	return &UpsertWriter{
 		table: t,
-		opts:  opts,
+		state: state,
 	}
 }
 

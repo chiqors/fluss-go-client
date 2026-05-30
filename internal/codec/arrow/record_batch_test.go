@@ -1,6 +1,7 @@
 package arrowcodec
 
 import (
+	"encoding/binary"
 	"testing"
 
 	rowcodec "github.com/chiqors/fluss-go-client/internal/codec/row"
@@ -94,6 +95,38 @@ func TestLogRecordBatchRoundTrip(t *testing.T) {
 				t.Fatalf("row[%d][%d] = %#v, want %#v", i, j, got[i][j], rows[i][j])
 			}
 		}
+	}
+}
+
+func TestLogRecordBatchIncludesWriterState(t *testing.T) {
+	schema := rowcodec.NewSchema(
+		rowcodec.Int64Type(),
+		rowcodec.Int32Type(),
+		rowcodec.StringType(),
+	)
+	rows := [][]any{
+		{int64(1), int32(101), "created"},
+	}
+
+	payload, err := EncodeLogRecordBatch(schema, rows, LogBatchOptions{
+		SchemaID:   7,
+		AppendOnly: true,
+		WriterState: &rowcodec.WriterState{
+			WriterID:      555,
+			BatchSequence: 9,
+		},
+	})
+	if err != nil {
+		t.Fatalf("EncodeLogRecordBatch() error = %v", err)
+	}
+
+	gotWriterID := int64(binary.LittleEndian.Uint64(payload[32:40]))
+	if gotWriterID != 555 {
+		t.Fatalf("log writer id = %d, want %d", gotWriterID, 555)
+	}
+	gotSequence := int32(binary.LittleEndian.Uint32(payload[40:44]))
+	if gotSequence != 9 {
+		t.Fatalf("log batch sequence = %d, want %d", gotSequence, 9)
 	}
 }
 

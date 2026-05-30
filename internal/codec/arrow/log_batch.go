@@ -23,10 +23,11 @@ const (
 )
 
 type LogBatchOptions struct {
-	SchemaID   int32
-	AppendOnly bool
-	Zstd       bool
-	LZ4        bool
+	SchemaID    int32
+	AppendOnly  bool
+	Zstd        bool
+	LZ4         bool
+	WriterState *rowcodec.WriterState
 }
 
 func EncodeLogRecordBatch(schema rowcodec.Schema, rows [][]any, opts LogBatchOptions) ([]byte, error) {
@@ -88,13 +89,27 @@ func encodeLogBatch(recordPayload []byte, recordCount int, opts LogBatchOptions)
 		buf = append(buf, 0)
 	}
 	buf = binary.LittleEndian.AppendUint32(buf, 0)
-	buf = binary.LittleEndian.AppendUint64(buf, ^uint64(0))
-	buf = binary.LittleEndian.AppendUint32(buf, ^uint32(0))
+	buf = binary.LittleEndian.AppendUint64(buf, encodedWriterID(opts.WriterState))
+	buf = binary.LittleEndian.AppendUint32(buf, encodedBatchSequence(opts.WriterState))
 	buf = binary.LittleEndian.AppendUint32(buf, uint32(recordCount))
 	buf = append(buf, recordPayload...)
 	crc := crc32.Checksum(buf[logSchemaIDOffset:], crc32.MakeTable(crc32.Castagnoli))
 	binary.LittleEndian.PutUint32(buf[logCRCOffset:logSchemaIDOffset], crc)
 	return buf
+}
+
+func encodedWriterID(writerState *rowcodec.WriterState) uint64 {
+	if writerState == nil {
+		return ^uint64(0)
+	}
+	return uint64(writerState.WriterID)
+}
+
+func encodedBatchSequence(writerState *rowcodec.WriterState) uint32 {
+	if writerState == nil {
+		return ^uint32(0)
+	}
+	return uint32(writerState.BatchSequence)
 }
 
 func decodeLogBatch(payload []byte, validateCRC bool) (int, []byte, bool, error) {

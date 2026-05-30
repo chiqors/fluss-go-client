@@ -163,6 +163,10 @@ func New(name string) (proto.Message, error) {
 		return &flusspb.ScanKvRequest{}, nil
 	case "ScanKvResponse":
 		return &flusspb.ScanKvResponse{}, nil
+	case "InitWriterRequest":
+		return &flusspb.InitWriterRequest{}, nil
+	case "InitWriterResponse":
+		return &flusspb.InitWriterResponse{}, nil
 	default:
 		return nil, fmt.Errorf("generated proto message not registered: %s", name)
 	}

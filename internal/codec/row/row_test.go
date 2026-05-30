@@ -225,6 +225,55 @@ func TestEncodeKvRecordBatchIncludesLengthPrefixedKey(t *testing.T) {
 	}
 }
 
+func TestEncodeLogRecordBatchIncludesWriterState(t *testing.T) {
+	schema := NewSchema(Int64Type(), StringType())
+	payload, err := EncodeLogRecordBatch(schema, []any{int64(42), "value"}, LogBatchOptions{
+		SchemaID: 9,
+		Indexed:  true,
+		WriterState: &WriterState{
+			WriterID:      12345,
+			BatchSequence: 7,
+		},
+	})
+	if err != nil {
+		t.Fatalf("EncodeLogRecordBatch() error = %v", err)
+	}
+
+	gotWriterID := int64(binary.LittleEndian.Uint64(payload[32:40]))
+	if gotWriterID != 12345 {
+		t.Fatalf("log writer id = %d, want %d", gotWriterID, 12345)
+	}
+	gotSequence := int32(binary.LittleEndian.Uint32(payload[40:44]))
+	if gotSequence != 7 {
+		t.Fatalf("log batch sequence = %d, want %d", gotSequence, 7)
+	}
+}
+
+func TestEncodeKvRecordBatchIncludesWriterState(t *testing.T) {
+	schema := NewSchema(Int64Type(), StringType())
+	payload, err := EncodeKvRecordBatch(schema, []any{int64(42), "value"}, KvBatchOptions{
+		SchemaID:   9,
+		Indexed:    true,
+		KeyColumns: []int{0},
+		WriterState: &WriterState{
+			WriterID:      6789,
+			BatchSequence: 11,
+		},
+	})
+	if err != nil {
+		t.Fatalf("EncodeKvRecordBatch() error = %v", err)
+	}
+
+	gotWriterID := int64(binary.LittleEndian.Uint64(payload[12:20]))
+	if gotWriterID != 6789 {
+		t.Fatalf("kv writer id = %d, want %d", gotWriterID, 6789)
+	}
+	gotSequence := int32(binary.LittleEndian.Uint32(payload[20:24]))
+	if gotSequence != 11 {
+		t.Fatalf("kv batch sequence = %d, want %d", gotSequence, 11)
+	}
+}
+
 func TestDecodeValueRecordBatchRows(t *testing.T) {
 	schema := NewSchema(Int64Type(), StringType(), StringType())
 

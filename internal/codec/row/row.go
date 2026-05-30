@@ -18,14 +18,21 @@ const (
 )
 
 type LogBatchOptions struct {
-	SchemaID int32
-	Indexed  bool
+	SchemaID    int32
+	Indexed     bool
+	WriterState *WriterState
 }
 
 type KvBatchOptions struct {
-	SchemaID   int32
-	Indexed    bool
-	KeyColumns []int
+	SchemaID    int32
+	Indexed     bool
+	KeyColumns  []int
+	WriterState *WriterState
+}
+
+type WriterState struct {
+	WriterID      int64
+	BatchSequence int32
 }
 
 type Value struct {
@@ -73,7 +80,7 @@ func EncodeLogRecordBatch(schema Schema, values []any, opts LogBatchOptions) ([]
 	if err != nil {
 		return nil, err
 	}
-	return encodeLogBatch(opts.SchemaID, recordPayload), nil
+	return encodeLogBatch(opts.SchemaID, recordPayload, opts.WriterState), nil
 }
 
 func EncodeKvRecordBatch(schema Schema, values []any, opts KvBatchOptions) ([]byte, error) {
@@ -81,7 +88,7 @@ func EncodeKvRecordBatch(schema Schema, values []any, opts KvBatchOptions) ([]by
 	if err != nil {
 		return nil, err
 	}
-	return encodeKvBatch(opts.SchemaID, recordPayload), nil
+	return encodeKvBatch(opts.SchemaID, recordPayload, opts.WriterState), nil
 }
 
 func EncodeKvDeleteRecordBatch(schema Schema, values []any, opts KvBatchOptions) ([]byte, error) {
@@ -89,7 +96,7 @@ func EncodeKvDeleteRecordBatch(schema Schema, values []any, opts KvBatchOptions)
 	if err != nil {
 		return nil, err
 	}
-	return encodeKvBatch(opts.SchemaID, recordPayload), nil
+	return encodeKvBatch(opts.SchemaID, recordPayload, opts.WriterState), nil
 }
 
 func DecodeLogRecordBatch(schema Schema, payload []byte) ([]any, error) {
@@ -165,7 +172,7 @@ func DecodeValueRecordBatchRows(schema Schema, payload []byte, indexed bool) ([]
 	return rows, nil
 }
 
-func encodeLogBatch(schemaID int32, recordPayload []byte) []byte {
+func encodeLogBatch(schemaID int32, recordPayload []byte, writerState *WriterState) []byte {
 	buf := make([]byte, 0, logHeaderSize+len(recordPayload))
 	buf = binary.LittleEndian.AppendUint64(buf, 0) // base offset
 	buf = binary.LittleEndian.AppendUint32(buf, uint32(logLengthFieldSize+len(recordPayload)))
@@ -175,8 +182,8 @@ func encodeLogBatch(schemaID int32, recordPayload []byte) []byte {
 	buf = binary.LittleEndian.AppendUint16(buf, uint16(schemaID))
 	buf = append(buf, 0)                           // attributes
 	buf = binary.LittleEndian.AppendUint32(buf, 0) // last offset delta
-	buf = binary.LittleEndian.AppendUint64(buf, ^uint64(0))
-	buf = binary.LittleEndian.AppendUint32(buf, ^uint32(0))
+	buf = binary.LittleEndian.AppendUint64(buf, encodedWriterID(writerState))
+	buf = binary.LittleEndian.AppendUint32(buf, encodedBatchSequence(writerState))
 	buf = binary.LittleEndian.AppendUint32(buf, 1)
 	buf = append(buf, recordPayload...)
 	crc := crc32.Checksum(buf[25:], crc32.MakeTable(crc32.Castagnoli))
@@ -184,20 +191,34 @@ func encodeLogBatch(schemaID int32, recordPayload []byte) []byte {
 	return buf
 }
 
-func encodeKvBatch(schemaID int32, recordPayload []byte) []byte {
+func encodeKvBatch(schemaID int32, recordPayload []byte, writerState *WriterState) []byte {
 	buf := make([]byte, 0, kvHeaderSize+len(recordPayload))
 	buf = binary.LittleEndian.AppendUint32(buf, uint32(kvLengthFieldSize+len(recordPayload)))
 	buf = append(buf, kvMagicV0)
 	buf = binary.LittleEndian.AppendUint32(buf, 0) // crc placeholder
 	buf = binary.LittleEndian.AppendUint16(buf, uint16(schemaID))
 	buf = append(buf, 0) // attributes
-	buf = binary.LittleEndian.AppendUint64(buf, ^uint64(0))
-	buf = binary.LittleEndian.AppendUint32(buf, ^uint32(0))
+	buf = binary.LittleEndian.AppendUint64(buf, encodedWriterID(writerState))
+	buf = binary.LittleEndian.AppendUint32(buf, encodedBatchSequence(writerState))
 	buf = binary.LittleEndian.AppendUint32(buf, 1)
 	buf = append(buf, recordPayload...)
 	crc := crc32.Checksum(buf[9:], crc32.MakeTable(crc32.Castagnoli))
 	binary.LittleEndian.PutUint32(buf[5:9], crc)
 	return buf
+}
+
+func encodedWriterID(writerState *WriterState) uint64 {
+	if writerState == nil {
+		return ^uint64(0)
+	}
+	return uint64(writerState.WriterID)
+}
+
+func encodedBatchSequence(writerState *WriterState) uint32 {
+	if writerState == nil {
+		return ^uint32(0)
+	}
+	return uint32(writerState.BatchSequence)
 }
 
 func encodeLogRecord(schema Schema, values []any, indexed bool) ([]byte, error) {

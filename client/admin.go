@@ -733,6 +733,27 @@ func (a *AdminClient) getLakeSnapshot(ctx context.Context, path TablePath, snaps
 	return out, nil
 }
 
+func (a *AdminClient) InitWriter(ctx context.Context, tablePaths []TablePath) (InitWriterResult, error) {
+	resp, err := a.invokeCoordinator(ctx, flusspb.ApiKey_InitWriter, "InitWriterRequest", "InitWriterResponse", func(msg proto.Message) error {
+		req, ok := msg.(*flusspb.InitWriterRequest)
+		if !ok {
+			return fmt.Errorf("fluss: unexpected init writer request type %T", msg)
+		}
+		for _, path := range tablePaths {
+			req.TablePath = append(req.TablePath, buildTablePath(path))
+		}
+		return nil
+	})
+	if err != nil {
+		return InitWriterResult{}, err
+	}
+	r, ok := resp.(*flusspb.InitWriterResponse)
+	if !ok {
+		return InitWriterResult{}, fmt.Errorf("fluss: unexpected init writer response type %T", resp)
+	}
+	return InitWriterResult{WriterID: r.GetWriterId()}, nil
+}
+
 func (a *AdminClient) invokeAny(ctx context.Context, api flusspb.ApiKey, reqName, respName string, build func(proto.Message) error) (proto.Message, error) {
 	addr := a.client.endpoints[0]
 	if coordinator, ok := a.client.metadata.Coordinator(); ok {

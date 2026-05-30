@@ -2,6 +2,7 @@ package client
 
 import (
 	"errors"
+	"time"
 
 	"github.com/chiqors/fluss-go-client/internal/metadata"
 )
@@ -220,6 +221,10 @@ type LakeSnapshot struct {
 	Buckets    []LakeSnapshotBucket
 }
 
+type InitWriterResult struct {
+	WriterID int64
+}
+
 type BucketRecordBatch struct {
 	PartitionID *int64
 	BucketID    int32
@@ -230,6 +235,9 @@ type AppendOptions struct {
 	Acks               int32
 	TimeoutMs          int32
 	MaxBufferedBatches int
+	MaxBufferedBytes   int
+	Linger             time.Duration
+	BlockOnBufferFull  bool
 	FlushOnClose       *bool
 }
 
@@ -239,6 +247,9 @@ type UpsertOptions struct {
 	TargetColumns      []int32
 	AggMode            *int32
 	MaxBufferedBatches int
+	MaxBufferedBytes   int
+	Linger             time.Duration
+	BlockOnBufferFull  bool
 	FlushOnClose       *bool
 }
 
