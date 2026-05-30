@@ -60,6 +60,7 @@ Success means a Go team can:
 
 ### Progress Ledger
 
+- 2026-05-30: taught the Go Arrow append path to honor Fluss table Arrow compression properties, including the default `ZSTD` setting, so the dedicated projection demo table can move back onto the normal default-compression path.
 - 2026-05-30: added the first Fluss-specific Arrow log batch path in Go, including public Arrow append/decode helpers, mock integration coverage, a dedicated `ARROW` demo table, and real-cluster E2E intent for projection-backed log fetch semantics.
 - 2026-05-30: added projection-aware public log fetch options and request-level test coverage; discovered via real-cluster validation that Fluss only supports column projection for `ARROW` log format, so the `INDEXED`-table demo and support matrix were narrowed back to partial support.
 - 2026-05-30: promoted primary-key limit scan into a decoded public data operation with shared limit-scan row helpers and real-cluster E2E coverage, moving another support-matrix data-operation row out of raw-byte-only usage.

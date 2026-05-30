@@ -25,6 +25,8 @@ const (
 type LogBatchOptions struct {
 	SchemaID   int32
 	AppendOnly bool
+	Zstd       bool
+	LZ4        bool
 }
 
 func EncodeLogRecordBatch(schema rowcodec.Schema, rows [][]any, opts LogBatchOptions) ([]byte, error) {
@@ -34,7 +36,10 @@ func EncodeLogRecordBatch(schema rowcodec.Schema, rows [][]any, opts LogBatchOpt
 	if len(rows) == 0 {
 		return nil, fmt.Errorf("arrowcodec: at least one row is required")
 	}
-	recordPayload, err := EncodeRecordBatch(schema, rows)
+	recordPayload, err := EncodeRecordBatchWithOptions(schema, rows, RecordBatchEncodeOptions{
+		Zstd: opts.Zstd,
+		LZ4:  opts.LZ4,
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -17,6 +17,15 @@ import (
 )
 
 func EncodeRecordBatch(schema rowcodec.Schema, rows [][]any) ([]byte, error) {
+	return EncodeRecordBatchWithOptions(schema, rows)
+}
+
+type RecordBatchEncodeOptions struct {
+	Zstd bool
+	LZ4  bool
+}
+
+func EncodeRecordBatchWithOptions(schema rowcodec.Schema, rows [][]any, opts ...RecordBatchEncodeOptions) ([]byte, error) {
 	arrowSchema, err := SchemaFromRowSchema(schema)
 	if err != nil {
 		return nil, err
@@ -38,7 +47,16 @@ func EncodeRecordBatch(schema rowcodec.Schema, rows [][]any) ([]byte, error) {
 
 	rec := builder.NewRecordBatch()
 	defer rec.Release()
-	payload, err := ipc.GetRecordBatchPayload(rec, ipc.WithAllocator(mem))
+	ipcOpts := []ipc.Option{ipc.WithAllocator(mem)}
+	if len(opts) > 0 {
+		switch {
+		case opts[0].Zstd:
+			ipcOpts = append(ipcOpts, ipc.WithZstd())
+		case opts[0].LZ4:
+			ipcOpts = append(ipcOpts, ipc.WithLZ4())
+		}
+	}
+	payload, err := ipc.GetRecordBatchPayload(rec, ipcOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("arrowcodec: encode record batch payload: %w", err)
 	}

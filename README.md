@@ -16,10 +16,16 @@ Current implementation status:
 - Metadata cache and bucket leader routing
 - Admin APIs for database/table/schema/partition metadata
 - Raw table operations for append, upsert, delete, lookup, prefix lookup, fetch log, limit scan, and KV scan
+- Real-cluster E2E coverage for indexed log round-trips, Arrow log projection, primary-key data operations, and Paimon-backed deployment validation
 
 The current data APIs operate on Fluss wire-format record batches as raw bytes. Arrow-first row
 encoders/decoders and richer typed row helpers are intentionally left as the next layer on top of
 this foundation.
+
+Current Arrow note:
+
+- Fluss defaults `ARROW` log compression to `ZSTD`
+- the canonical support-contract E2E now validates Arrow projection on a dedicated `ARROW` table using the normal default-compression path
 
 ## Current Scope
 

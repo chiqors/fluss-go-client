@@ -9,8 +9,9 @@ type tableDescriptorJSON struct {
 		} `json:"columns"`
 		PrimaryKey []string `json:"primary_key"`
 	} `json:"schema"`
-	PartitionKey []string `json:"partition_key"`
-	BucketKey    []string `json:"bucket_key"`
+	PartitionKey []string          `json:"partition_key"`
+	BucketKey    []string          `json:"bucket_key"`
+	Properties   map[string]string `json:"properties"`
 }
 
 func ParseTableDescriptor(tableJSON []byte) (columnNames []string, partitionKeys []string, primaryKeys []string, bucketKeys []string, err error) {
@@ -31,4 +32,19 @@ func ParseTableDescriptor(tableJSON []byte) (columnNames []string, partitionKeys
 func ParseTableKeys(tableJSON []byte) (primaryKeys []string, bucketKeys []string, err error) {
 	_, _, primaryKeys, bucketKeys, err = ParseTableDescriptor(tableJSON)
 	return primaryKeys, bucketKeys, err
+}
+
+func ParseTableProperties(tableJSON []byte) (map[string]string, error) {
+	var desc tableDescriptorJSON
+	if err := json.Unmarshal(tableJSON, &desc); err != nil {
+		return nil, err
+	}
+	if desc.Properties == nil {
+		return map[string]string{}, nil
+	}
+	out := make(map[string]string, len(desc.Properties))
+	for k, v := range desc.Properties {
+		out[k] = v
+	}
+	return out, nil
 }

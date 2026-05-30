@@ -43,10 +43,24 @@ func (t *TableClient) AppendArrowRows(ctx context.Context, bucketID int32, rows 
 		}
 		values = append(values, row.Values)
 	}
-	payload, err := arrowcodec.EncodeLogRecordBatch(schema, values, arrowcodec.LogBatchOptions{
+	properties, err := metadata.ParseTableProperties(info.JSON)
+	if err != nil {
+		return nil, fmt.Errorf("fluss: append arrow rows: parse table properties: %w", err)
+	}
+	logOpts := arrowcodec.LogBatchOptions{
 		SchemaID:   info.SchemaID,
 		AppendOnly: true,
-	})
+	}
+	switch strings.ToUpper(properties["table.log.arrow.compression.type"]) {
+	case "", "ZSTD":
+		logOpts.Zstd = true
+	case "LZ4_FRAME":
+		logOpts.LZ4 = true
+	case "NONE":
+	default:
+		return nil, fmt.Errorf("fluss: append arrow rows: unsupported arrow compression type %q", properties["table.log.arrow.compression.type"])
+	}
+	payload, err := arrowcodec.EncodeLogRecordBatch(schema, values, logOpts)
 	if err != nil {
 		return nil, err
 	}

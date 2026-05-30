@@ -678,6 +678,77 @@ func TestAppendArrowRowsAndDecode(t *testing.T) {
 	}
 }
 
+func TestAppendArrowRowsUsesDefaultZstdCompression(t *testing.T) {
+	srv := newMockFlussServer(t)
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata, flusspb.ApiKey_ProduceLog)), nil
+	})
+
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		_ = payload
+		resp := metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "arrow_logs"}, 42, 9)
+		resp.TableMetadata[0].TableJson = []byte(`{"schema":{"columns":[{"name":"order_id"},{"name":"customer_id"},{"name":"status"}],"primary_key":[]},"partition_key":[],"bucket_key":[],"properties":{"table.log.arrow.compression.type":"ZSTD","table.log.arrow.compression.zstd.level":"3"}}`)
+		return mustMarshal(t, resp), nil
+	})
+
+	srv.on(flusspb.ApiKey_ProduceLog, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.ProduceLogRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		records := req.GetBucketsReq()[0].GetRecords()
+		schema := NewSchema(Int64Type(), Int32Type(), StringType())
+		decoded, err := DecodeArrowLogBatchRows(schema, records)
+		if err != nil {
+			t.Fatalf("DecodeArrowLogBatchRows() error = %v", err)
+		}
+		if len(decoded) != 2 || decoded[0][0] != int64(1) || decoded[1][2] != "packed" {
+			t.Fatalf("unexpected decoded zstd arrow rows: %#v", decoded)
+		}
+		return mustMarshal(t, &flusspb.ProduceLogResponse{
+			BucketsResp: []*flusspb.PbProduceLogRespForBucket{{
+				BucketId:   proto.Int32(0),
+				BaseOffset: proto.Int64(91),
+			}},
+		}), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := Dial(ctx, Config{Endpoints: []string{srv.addr}})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	schema := NewSchema(Int64Type(), Int32Type(), StringType())
+	row1, _ := NewRow(schema, int64(1), int32(101), "created")
+	row2, _ := NewRow(schema, int64(2), int32(102), "packed")
+	got, err := cli.Table(TablePath{DatabaseName: "demo", TableName: "arrow_logs"}).AppendArrowRows(ctx, 0, []Row{row1, row2})
+	if err != nil {
+		t.Fatalf("AppendArrowRows() error = %v", err)
+	}
+	if len(got) != 1 || got[0].BaseOffset != 91 {
+		t.Fatalf("unexpected append results: %#v", got)
+	}
+}
+
 func TestDecodeArrowLogBatchRows(t *testing.T) {
 	schema := NewSchema(Int64Type(), Int32Type(), StringType())
 	payload, err := arrowcodec.EncodeLogRecordBatch(schema, [][]any{

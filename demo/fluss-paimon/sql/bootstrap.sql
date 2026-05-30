@@ -83,6 +83,5 @@ CREATE TABLE e2e_orders_arrow (
   status STRING
 ) WITH (
   'bucket.num' = '1',
-  'table.log.format' = 'arrow',
-  'table.log.arrow.compression.type' = 'NONE'
+  'table.log.format' = 'arrow'
 );

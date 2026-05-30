@@ -48,10 +48,12 @@ The SQL bootstrap creates a Fluss catalog plus focused support-contract tables:
 
 - database: `fluss`
 - indexed log table: `e2e_orders`
-- Arrow log table: `e2e_orders_arrow` (projection-focused, configured with Arrow compression disabled for deterministic interoperability coverage)
+- Arrow log table: `e2e_orders_arrow` (projection-focused, using Fluss default Arrow compression settings)
 - primary-key table: `e2e_customers`
 - prefix-lookup table: `e2e_customer_orders`
 - all-types log table: `e2e_all_types`
+
+This table now uses the default Fluss `ARROW` compression settings, so the support-contract E2E covers Arrow projection semantics under the normal `ZSTD`-backed path rather than a special uncompressed override.
 
 The bootstrap intentionally stops after schema creation. The Go service seeds and verifies data
 itself so the Apache Fluss Go SDK proves the full round-trip through its own public client surface.
