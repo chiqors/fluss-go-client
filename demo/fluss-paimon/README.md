@@ -60,17 +60,14 @@ The Go service then:
 - lists databases and tables
 - validates database and table existence checks
 - fetches table metadata and schema for both tables
+- seeds one indexed log row and one indexed KV row through the Go client
 - validates partition-info listing on the non-partitioned tables
 - runs a real `LimitScan` against the log table
-- starts and closes a real `KVScanner` against the primary-key table and verifies the first batch is non-empty
+- performs a KV lookup against the primary-key table and verifies the stored row round-trip
 - fails the container if any of those paths break against the real Fluss cluster
 
-This demo currently validates admin, metadata, log-table scan entry, and KV scanner lifecycle
+This demo currently validates admin, metadata, write, log-table scan entry, and KV lookup round-trip
 against a real cluster.
-
-It still does not validate append/upsert/lookup record round-trips, because the Go SDK data plane
-is still raw Fluss record-batch byte oriented and does not yet ship schema-aware record
-encoders/decoders.
 
 ## Endpoints
 

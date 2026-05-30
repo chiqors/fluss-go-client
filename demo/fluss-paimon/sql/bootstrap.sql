@@ -20,6 +20,7 @@ CREATE TABLE e2e_orders (
   status STRING
 ) WITH (
   'bucket.num' = '1',
+  'table.log.format' = 'indexed',
   'table.datalake.enabled' = 'true',
   'table.datalake.freshness' = '30s'
 );
@@ -30,5 +31,6 @@ CREATE TABLE e2e_customers (
   customer_tier STRING,
   PRIMARY KEY (customer_id) NOT ENFORCED
 ) WITH (
-  'bucket.num' = '1'
+  'bucket.num' = '1',
+  'table.kv.format' = 'indexed'
 );

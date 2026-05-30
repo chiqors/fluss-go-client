@@ -73,6 +73,7 @@ Success means a Go team can:
 - [x] Metadata cache and leader routing foundation
 - [x] Admin metadata calls for databases, tables, schema, and partitions
 - [x] Raw table operations for append, upsert, lookup, prefix lookup, fetch log, limit scan, and KV scan
+- [x] Demo E2E now exercises append, upsert, limit scan, and KV lookup round-trips against a real cluster
 - [x] Unit and mock-style integration coverage for the current client surface
 - [x] Containerized Fluss/Paimon smoke-test demo at [demo/fluss-paimon/README.md](./demo/fluss-paimon/README.md)
 
@@ -553,6 +554,7 @@ Use this section as the short memory of real repo progress.
 - [x] Built `demo/fluss-paimon` as a minimal real-container E2E smoke test
 - [x] Removed unstable scan assertion from the demo smoke path
 - [x] Simplified SQL bootstrap to schema creation only so the smoke path does not hang on streaming INSERT jobs
+- [x] Added initial Go row/data helpers and wired `go-e2e` to seed sample append/upsert rows through the client API
 - [x] Aligned module path to `github.com/chiqors/fluss-go-client`
 - [x] Updated demo README to reflect the current direct-Go validation setup
 - [x] Added Phase 0 repo guardrails: CI workflow, contributing guide, and architecture overview
