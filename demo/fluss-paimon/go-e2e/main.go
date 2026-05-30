@@ -3,13 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"os"
 	"sort"
 	"time"
 
 	"github.com/chiqors/fluss-go-client/client"
-	rowcodec "github.com/chiqors/fluss-go-client/internal/codec/row"
 )
 
 type featureCase struct {
@@ -165,11 +163,11 @@ func runGetTableSchema(ctx context.Context, cli *client.Client, env environment)
 }
 
 func runLogAppendAndLimitScan(ctx context.Context, cli *client.Client, env environment) error {
-	schema := rowcodec.NewSchema(
-		rowcodec.Int64Type(),
-		rowcodec.Int32Type(),
-		rowcodec.Float64Type(),
-		rowcodec.StringType(),
+	schema := client.NewSchema(
+		client.Int64Type(),
+		client.Int32Type(),
+		client.Float64Type(),
+		client.StringType(),
 	)
 	fields := []string{"order_id", "customer_id", "amount", "status"}
 	rows := mustRows(schema, [][]any{
@@ -196,7 +194,7 @@ func runLogAppendAndLimitScan(ctx context.Context, cli *client.Client, env envir
 	if !limitResult.IsLogTable {
 		return fmt.Errorf("limit scan log table: expected log-table result")
 	}
-	decoded, err := rowcodec.DecodeLogRecordBatchRows(schema, limitResult.Records)
+	decoded, err := client.DecodeIndexedLogBatchRows(schema, limitResult.Records)
 	if err != nil {
 		return fmt.Errorf("decode log limit scan: %w", err)
 	}
@@ -213,10 +211,10 @@ func runLogAppendAndLimitScan(ctx context.Context, cli *client.Client, env envir
 }
 
 func runPrimaryKeyUpsertAndLookup(ctx context.Context, cli *client.Client, env environment) error {
-	schema := rowcodec.NewSchema(
-		rowcodec.Int64Type(),
-		rowcodec.StringType(),
-		rowcodec.StringType(),
+	schema := client.NewSchema(
+		client.Int64Type(),
+		client.StringType(),
+		client.StringType(),
 	)
 	fields := []string{"customer_id", "customer_name", "customer_tier"}
 	rows := mustRows(schema, [][]any{
@@ -252,28 +250,28 @@ func runPrimaryKeyUpsertAndLookup(ctx context.Context, cli *client.Client, env e
 }
 
 func runAllTypesAppendAndLimitScan(ctx context.Context, cli *client.Client, env environment) error {
-	schema := rowcodec.NewSchema(
-		rowcodec.Int64Type(),
-		rowcodec.BoolType(),
-		rowcodec.Int8Type(),
-		rowcodec.Int16Type(),
-		rowcodec.Int32Type(),
-		rowcodec.Int64Type(),
-		rowcodec.Float32Type(),
-		rowcodec.Float64Type(),
-		rowcodec.StringType(),
-		rowcodec.BytesType(),
-		rowcodec.DecimalType(10, 2),
-		rowcodec.DateType(),
-		rowcodec.TimeType(),
-		rowcodec.TimestampNtzType(6),
-		rowcodec.TimestampLtzType(6),
-		rowcodec.ArrayType(rowcodec.Int32Type()),
-		rowcodec.MapType(rowcodec.StringType(), rowcodec.Int64Type()),
-		rowcodec.RowType(
-			rowcodec.StringType(),
-			rowcodec.Int32Type(),
-			rowcodec.ArrayType(rowcodec.StringType()),
+	schema := client.NewSchema(
+		client.Int64Type(),
+		client.BoolType(),
+		client.Int8Type(),
+		client.Int16Type(),
+		client.Int32Type(),
+		client.Int64Type(),
+		client.Float32Type(),
+		client.Float64Type(),
+		client.StringType(),
+		client.BytesType(),
+		client.DecimalType(10, 2),
+		client.DateType(),
+		client.TimeType(),
+		client.TimestampNtzType(6),
+		client.TimestampLtzType(6),
+		client.ArrayType(client.Int32Type()),
+		client.MapType(client.StringType(), client.Int64Type()),
+		client.RowType(
+			client.StringType(),
+			client.Int32Type(),
+			client.ArrayType(client.StringType()),
 		),
 	)
 	fields := []string{
@@ -308,11 +306,11 @@ func runAllTypesAppendAndLimitScan(ctx context.Context, cli *client.Client, env 
 			float64(70.5),
 			"typed-event",
 			[]byte("payload"),
-			rowcodec.Decimal{Unscaled: big.NewInt(12345), Scale: 2},
+			mustDecimal("123.45", 10, 2),
 			int32(20000),
 			int32(3723000),
-			rowcodec.TimestampNtz{Millisecond: 1717000000123, NanoOfMillisecond: 456789},
-			rowcodec.TimestampLtz{EpochMillisecond: 1717000000456, NanoOfMillisecond: 123456},
+			client.TimestampNtz{Millisecond: 1717000000123, NanoOfMillisecond: 456789},
+			client.TimestampLtz{EpochMillisecond: 1717000000456, NanoOfMillisecond: 123456},
 			[]any{int32(3), int32(5), int32(8)},
 			map[any]any{"alpha": int64(1), "beta": int64(2)},
 			[]any{"note", int32(9), []any{"x", "y"}},
@@ -337,7 +335,7 @@ func runAllTypesAppendAndLimitScan(ctx context.Context, cli *client.Client, env 
 	if !limitResult.IsLogTable {
 		return fmt.Errorf("limit scan all-types table: expected log-table result")
 	}
-	decoded, err := rowcodec.DecodeLogRecordBatchRows(schema, limitResult.Records)
+	decoded, err := client.DecodeIndexedLogBatchRows(schema, limitResult.Records)
 	if err != nil {
 		return fmt.Errorf("decode all-types log rows: %w", err)
 	}
@@ -354,10 +352,10 @@ func runAllTypesAppendAndLimitScan(ctx context.Context, cli *client.Client, env 
 }
 
 func runPrimaryKeyDelete(ctx context.Context, cli *client.Client, env environment) error {
-	schema := rowcodec.NewSchema(
-		rowcodec.Int64Type(),
-		rowcodec.StringType(),
-		rowcodec.StringType(),
+	schema := client.NewSchema(
+		client.Int64Type(),
+		client.StringType(),
+		client.StringType(),
 	)
 	row := mustRows(schema, [][]any{{int64(99), "Delete Me", "silver"}})[0]
 
@@ -380,11 +378,11 @@ func runPrimaryKeyDelete(ctx context.Context, cli *client.Client, env environmen
 }
 
 func runPrimaryKeyPrefixLookup(ctx context.Context, cli *client.Client, env environment) error {
-	schema := rowcodec.NewSchema(
-		rowcodec.Int64Type(),
-		rowcodec.StringType(),
-		rowcodec.Int64Type(),
-		rowcodec.StringType(),
+	schema := client.NewSchema(
+		client.Int64Type(),
+		client.StringType(),
+		client.Int64Type(),
+		client.StringType(),
 	)
 	fields := []string{"customer_id", "customer_name", "order_id", "order_status"}
 	rows := mustRows(schema, [][]any{
@@ -441,7 +439,7 @@ func runPrimaryKeyPrefixLookup(ctx context.Context, cli *client.Client, env envi
 	return nil
 }
 
-func lookupIndexedRows(ctx context.Context, cli *client.Client, path client.TablePath, schema rowcodec.Schema, rows []rowcodec.Row, keyColumns []int) ([]decodedRow, error) {
+func lookupIndexedRows(ctx context.Context, cli *client.Client, path client.TablePath, schema client.Schema, rows []client.Row, keyColumns []int) ([]decodedRow, error) {
 	req := client.LookupBucketRequest{BucketID: 0}
 	for _, row := range rows {
 		key, err := row.EncodeLookupKey(keyColumns...)
@@ -475,7 +473,7 @@ func lookupIndexedRows(ctx context.Context, cli *client.Client, path client.Tabl
 	return out, nil
 }
 
-func lookupOptionalIndexedRow(ctx context.Context, cli *client.Client, path client.TablePath, schema rowcodec.Schema, row rowcodec.Row, keyColumns []int) ([]any, error) {
+func lookupOptionalIndexedRow(ctx context.Context, cli *client.Client, path client.TablePath, schema client.Schema, row client.Row, keyColumns []int) ([]any, error) {
 	key, err := row.EncodeLookupKey(keyColumns...)
 	if err != nil {
 		return nil, fmt.Errorf("encode lookup key: %w", err)
@@ -535,16 +533,24 @@ func formatDecodedRows(rows []decodedRow) []string {
 	return out
 }
 
-func mustRows(schema rowcodec.Schema, values [][]any) []rowcodec.Row {
-	rows := make([]rowcodec.Row, 0, len(values))
+func mustRows(schema client.Schema, values [][]any) []client.Row {
+	rows := make([]client.Row, 0, len(values))
 	for _, rowValues := range values {
-		row, err := rowcodec.NewRow(schema, rowValues...)
+		row, err := client.NewRow(schema, rowValues...)
 		if err != nil {
 			fatalf("build row: %v", err)
 		}
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+func mustDecimal(value string, precision, scale int) client.Decimal {
+	decimal, err := client.NewDecimalFromString(value, precision, scale)
+	if err != nil {
+		fatalf("build decimal: %v", err)
+	}
+	return decimal
 }
 
 func waitForTables(ctx context.Context, admin *client.AdminClient, database string, expected []string) error {
@@ -617,14 +623,14 @@ func deepValueEqual(got, want any) bool {
 	case []byte:
 		gotValue, ok := got.([]byte)
 		return ok && string(gotValue) == string(wantValue)
-	case rowcodec.Decimal:
-		gotValue, ok := got.(rowcodec.Decimal)
+	case client.Decimal:
+		gotValue, ok := got.(client.Decimal)
 		return ok && gotValue.Scale == wantValue.Scale && gotValue.Unscaled.Cmp(wantValue.Unscaled) == 0
-	case rowcodec.TimestampNtz:
-		gotValue, ok := got.(rowcodec.TimestampNtz)
+	case client.TimestampNtz:
+		gotValue, ok := got.(client.TimestampNtz)
 		return ok && gotValue == wantValue
-	case rowcodec.TimestampLtz:
-		gotValue, ok := got.(rowcodec.TimestampLtz)
+	case client.TimestampLtz:
+		gotValue, ok := got.(client.TimestampLtz)
 		return ok && gotValue == wantValue
 	case []any:
 		gotValue, ok := got.([]any)

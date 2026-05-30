@@ -10,7 +10,7 @@ import (
 )
 
 // AppendIndexedRow encodes a single row using the indexed row layout and appends it to a log table.
-func (t *TableClient) AppendIndexedRow(ctx context.Context, bucketID int32, row rowcodec.Row) ([]ProduceResult, error) {
+func (t *TableClient) AppendIndexedRow(ctx context.Context, bucketID int32, row Row) ([]ProduceResult, error) {
 	info, err := t.ensureTableInfo(ctx)
 	if err != nil {
 		return nil, err
@@ -23,7 +23,7 @@ func (t *TableClient) AppendIndexedRow(ctx context.Context, bucketID int32, row 
 }
 
 // UpsertIndexedRow encodes a single row using the indexed row layout and upserts it into a KV table.
-func (t *TableClient) UpsertIndexedRow(ctx context.Context, bucketID int32, row rowcodec.Row, targetColumns []int32) ([]PutResult, error) {
+func (t *TableClient) UpsertIndexedRow(ctx context.Context, bucketID int32, row Row, targetColumns []int32) ([]PutResult, error) {
 	info, err := t.ensureTableInfo(ctx)
 	if err != nil {
 		return nil, err
@@ -47,7 +47,7 @@ func (t *TableClient) UpsertIndexedRow(ctx context.Context, bucketID int32, row 
 }
 
 // DeleteIndexedRow encodes a tombstone record for the row key and deletes it from a KV table.
-func (t *TableClient) DeleteIndexedRow(ctx context.Context, bucketID int32, row rowcodec.Row, targetColumns []int32) ([]PutResult, error) {
+func (t *TableClient) DeleteIndexedRow(ctx context.Context, bucketID int32, row Row, targetColumns []int32) ([]PutResult, error) {
 	info, err := t.ensureTableInfo(ctx)
 	if err != nil {
 		return nil, err
@@ -92,7 +92,7 @@ func keyColumnsByName(columnNames []string, keyNames []string) ([]int, error) {
 }
 
 // DecodeIndexedRowPayload decodes an indexed row payload back into field values.
-func DecodeIndexedRowPayload(schema rowcodec.Schema, payload []byte) ([]any, error) {
+func DecodeIndexedRowPayload(schema Schema, payload []byte) ([]any, error) {
 	values, err := rowcodec.DecodeIndexed(schema, payload)
 	if err != nil {
 		return nil, fmt.Errorf("fluss: decode indexed row payload: %w", err)
@@ -101,7 +101,7 @@ func DecodeIndexedRowPayload(schema rowcodec.Schema, payload []byte) ([]any, err
 }
 
 // DecodeIndexedLogBatchPayload decodes a log batch payload that contains a single indexed row.
-func DecodeIndexedLogBatchPayload(schema rowcodec.Schema, payload []byte) ([]any, error) {
+func DecodeIndexedLogBatchPayload(schema Schema, payload []byte) ([]any, error) {
 	values, err := rowcodec.DecodeLogRecordBatch(schema, payload)
 	if err != nil {
 		return nil, fmt.Errorf("fluss: decode indexed log batch payload: %w", err)
@@ -109,8 +109,17 @@ func DecodeIndexedLogBatchPayload(schema rowcodec.Schema, payload []byte) ([]any
 	return values, nil
 }
 
+// DecodeIndexedLogBatchRows decodes a log batch payload that contains one or more indexed rows.
+func DecodeIndexedLogBatchRows(schema Schema, payload []byte) ([][]any, error) {
+	values, err := rowcodec.DecodeLogRecordBatchRows(schema, payload)
+	if err != nil {
+		return nil, fmt.Errorf("fluss: decode indexed log batch rows: %w", err)
+	}
+	return values, nil
+}
+
 // DecodeIndexedLookupValuePayload decodes a KV lookup value that is prefixed with a 2-byte schema id.
-func DecodeIndexedLookupValuePayload(schema rowcodec.Schema, payload []byte) ([]any, error) {
+func DecodeIndexedLookupValuePayload(schema Schema, payload []byte) ([]any, error) {
 	if len(payload) < 2 {
 		return nil, fmt.Errorf("fluss: decode indexed lookup value payload: data: payload too short")
 	}

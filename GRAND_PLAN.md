@@ -60,6 +60,7 @@ Success means a Go team can:
 
 ### Progress Ledger
 
+- 2026-05-30: exposed Go-native public row/schema/type constructors and log-batch decode helpers through `client/`; validated all implemented scalar and composite data types in the Fluss+Paimon E2E all-types log round-trip.
 - 2026-05-30: validated the Go demo against the real Fluss/Paimon stack, including prefix lookup round-trip on `e2e_customer_orders`; updated the demo docs and support matrix to match the current behavior.
 - 2026-05-30: reworked the Fluss/Paimon Go E2E into a strict support-contract harness aligned to upstream Java client semantics for append, log limit scan, lookup, delete, and prefix lookup; updated docs and support matrix to reflect `GetTableSchema`, delete, and Paimon-backed demo coverage.
 
@@ -92,7 +93,7 @@ Success means a Go team can:
 ### Not production-ready yet
 
 - [ ] Arrow record batch decoding/encoding as a first-class public API
-- [ ] Stable typed row abstraction beyond raw bytes
+- [~] Stable typed row abstraction beyond raw bytes
 - [ ] Higher-level writer types with batching, flush, retry, and lifecycle semantics
 - [ ] Higher-level scanner types with iterator or poll abstractions
 - [ ] Robust reconnect and retry policy coverage under failure

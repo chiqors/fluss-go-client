@@ -3,7 +3,7 @@
 Fluss has a rich set of features and native data types available to users. The tables below summarize what the upstream Java client supports today and what the Go client in this repo supports today.
 
 The current real-cluster support contract is exercised by the Fluss+Paimon demo under `demo/fluss-paimon`.
-That E2E harness validates the implemented Go rows for admin metadata, log append + limit scan, all-types log round-trip, primary-key upsert + lookup, primary-key delete, and prefix lookup against a real Fluss deployment, using the upstream Java client semantics as the reference for overlapping behaviors.
+That E2E harness validates the implemented Go `client/` surface for admin metadata, log append + limit scan, all-types log round-trip, primary-key upsert + lookup, primary-key delete, and prefix lookup against a real Fluss deployment, using the upstream Java client semantics as the reference for overlapping behaviors.
 
 Legend:
 
@@ -67,8 +67,9 @@ For more details, see [Data Types](table-design/data-types.md).
 :::
 
 Current verification level:
-- scalar and composite row-codec support is covered by local Go round-trip tests
-- real-cluster E2E currently exercises the implemented admin, append, limit scan, upsert, delete, lookup, and prefix lookup flows, but not every individual data type above yet
+- scalar and composite row encoding/decoding is covered by local Go round-trip tests
+- public row/schema constructors and decode helpers are available through `client/`
+- real-cluster E2E currently exercises the implemented admin, append, limit scan, upsert, delete, lookup, prefix lookup, and all-types log round-trip flows
 
 ## Admin Operations
 
