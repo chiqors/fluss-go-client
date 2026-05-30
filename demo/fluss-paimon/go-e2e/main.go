@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"os"
 	"sort"
 	"time"
@@ -22,6 +23,7 @@ type environment struct {
 	logTable    client.TablePath
 	kvTable     client.TablePath
 	prefixTable client.TablePath
+	typesTable  client.TablePath
 }
 
 type decodedRow struct {
@@ -48,6 +50,10 @@ func main() {
 			DatabaseName: database,
 			TableName:    getenv("FLUSS_PREFIX_TABLE", "e2e_customer_orders"),
 		},
+		typesTable: client.TablePath{
+			DatabaseName: database,
+			TableName:    getenv("FLUSS_TYPES_TABLE", "e2e_all_types"),
+		},
 	}
 
 	cli, err := client.Dial(ctx, client.Config{Endpoints: []string{getenv("FLUSS_BOOTSTRAP", "coordinator-server:9123")}})
@@ -61,6 +67,7 @@ func main() {
 		env.logTable.TableName,
 		env.kvTable.TableName,
 		env.prefixTable.TableName,
+		env.typesTable.TableName,
 	}); err != nil {
 		fatalf("wait for bootstrap tables: %v", err)
 	}
@@ -72,6 +79,7 @@ func main() {
 		{section: "Admin", name: "GetTableInfo", run: runGetTableInfo},
 		{section: "Admin", name: "GetTableSchema", run: runGetTableSchema},
 		{section: "Data Operations", name: "LogAppendAndLimitScan", run: runLogAppendAndLimitScan},
+		{section: "Data Operations", name: "AllTypesAppendAndLimitScan", run: runAllTypesAppendAndLimitScan},
 		{section: "Data Operations", name: "PrimaryKeyUpsertAndLookup", run: runPrimaryKeyUpsertAndLookup},
 		{section: "Data Operations", name: "PrimaryKeyDelete", run: runPrimaryKeyDelete},
 		{section: "Data Operations", name: "PrimaryKeyPrefixLookup", run: runPrimaryKeyPrefixLookup},
@@ -126,7 +134,7 @@ func runListTables(ctx context.Context, cli *client.Client, env environment) err
 }
 
 func runGetTableInfo(ctx context.Context, cli *client.Client, env environment) error {
-	for _, path := range []client.TablePath{env.logTable, env.kvTable, env.prefixTable} {
+	for _, path := range []client.TablePath{env.logTable, env.kvTable, env.prefixTable, env.typesTable} {
 		info, err := cli.Table(path).Info(ctx)
 		if err != nil {
 			return fmt.Errorf("table %s.%s info: %w", path.DatabaseName, path.TableName, err)
@@ -143,7 +151,7 @@ func runGetTableInfo(ctx context.Context, cli *client.Client, env environment) e
 }
 
 func runGetTableSchema(ctx context.Context, cli *client.Client, env environment) error {
-	for _, path := range []client.TablePath{env.logTable, env.kvTable, env.prefixTable} {
+	for _, path := range []client.TablePath{env.logTable, env.kvTable, env.prefixTable, env.typesTable} {
 		schema, err := cli.Table(path).Schema(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("table %s.%s schema: %w", path.DatabaseName, path.TableName, err)
@@ -239,6 +247,108 @@ func runPrimaryKeyUpsertAndLookup(ctx context.Context, cli *client.Client, env e
 			return fmt.Errorf("lookup kv row %d: got %v, want %v", i, lookupRows[i].values, rows[i].Values)
 		}
 		fmt.Printf("LookupKV Row[%d]: %s\n", i, formatRow(fields, lookupRows[i].values))
+	}
+	return nil
+}
+
+func runAllTypesAppendAndLimitScan(ctx context.Context, cli *client.Client, env environment) error {
+	schema := rowcodec.NewSchema(
+		rowcodec.Int64Type(),
+		rowcodec.BoolType(),
+		rowcodec.Int8Type(),
+		rowcodec.Int16Type(),
+		rowcodec.Int32Type(),
+		rowcodec.Int64Type(),
+		rowcodec.Float32Type(),
+		rowcodec.Float64Type(),
+		rowcodec.StringType(),
+		rowcodec.BytesType(),
+		rowcodec.DecimalType(10, 2),
+		rowcodec.DateType(),
+		rowcodec.TimeType(),
+		rowcodec.TimestampNtzType(6),
+		rowcodec.TimestampLtzType(6),
+		rowcodec.ArrayType(rowcodec.Int32Type()),
+		rowcodec.MapType(rowcodec.StringType(), rowcodec.Int64Type()),
+		rowcodec.RowType(
+			rowcodec.StringType(),
+			rowcodec.Int32Type(),
+			rowcodec.ArrayType(rowcodec.StringType()),
+		),
+	)
+	fields := []string{
+		"event_id",
+		"bool_flag",
+		"tiny_value",
+		"small_value",
+		"int_value",
+		"big_value",
+		"float_value",
+		"double_value",
+		"name",
+		"raw_bytes",
+		"amount",
+		"event_date",
+		"event_time",
+		"event_ts",
+		"event_ts_ltz",
+		"score_history",
+		"label_counts",
+		"nested_payload",
+	}
+	rows := mustRows(schema, [][]any{
+		{
+			int64(3001),
+			true,
+			int8(7),
+			int16(70),
+			int32(700),
+			int64(7000),
+			float32(7.25),
+			float64(70.5),
+			"typed-event",
+			[]byte("payload"),
+			rowcodec.Decimal{Unscaled: big.NewInt(12345), Scale: 2},
+			int32(20000),
+			int32(3723000),
+			rowcodec.TimestampNtz{Millisecond: 1717000000123, NanoOfMillisecond: 456789},
+			rowcodec.TimestampLtz{EpochMillisecond: 1717000000456, NanoOfMillisecond: 123456},
+			[]any{int32(3), int32(5), int32(8)},
+			map[any]any{"alpha": int64(1), "beta": int64(2)},
+			[]any{"note", int32(9), []any{"x", "y"}},
+		},
+	})
+
+	for i, row := range rows {
+		result, err := cli.Table(env.typesTable).AppendIndexedRow(ctx, 0, row)
+		if err != nil {
+			return fmt.Errorf("append all-types row %d: %w", i, err)
+		}
+		if len(result) != 1 {
+			return fmt.Errorf("append all-types row %d: unexpected result count %d", i, len(result))
+		}
+		fmt.Printf("AppendAllTypes[%d]: bucket=%d base_offset=%d\n", i, result[0].BucketID, result[0].BaseOffset)
+	}
+
+	limitResult, err := cli.Table(env.typesTable).LimitScan(ctx, nil, 0, int32(len(rows)))
+	if err != nil {
+		return fmt.Errorf("limit scan all-types table: %w", err)
+	}
+	if !limitResult.IsLogTable {
+		return fmt.Errorf("limit scan all-types table: expected log-table result")
+	}
+	decoded, err := rowcodec.DecodeLogRecordBatchRows(schema, limitResult.Records)
+	if err != nil {
+		return fmt.Errorf("decode all-types log rows: %w", err)
+	}
+	if len(decoded) != len(rows) {
+		return fmt.Errorf("limit scan all-types table: got %d rows, want %d", len(decoded), len(rows))
+	}
+	for i := range rows {
+		if !deepRowsEqual(decoded[i], rows[i].Values) {
+			return fmt.Errorf("all-types row %d: got %v, want %v", i, decoded[i], rows[i].Values)
+		}
+		fmt.Printf("AllTypes Row[%d]: %s\n", i, formatRow(fields, decoded[i]))
 	}
 	return nil
 }
@@ -488,6 +598,60 @@ func rowsEqual(got, want []any) bool {
 		}
 	}
 	return true
+}
+
+func deepRowsEqual(got, want []any) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if !deepValueEqual(got[i], want[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func deepValueEqual(got, want any) bool {
+	switch wantValue := want.(type) {
+	case []byte:
+		gotValue, ok := got.([]byte)
+		return ok && string(gotValue) == string(wantValue)
+	case rowcodec.Decimal:
+		gotValue, ok := got.(rowcodec.Decimal)
+		return ok && gotValue.Scale == wantValue.Scale && gotValue.Unscaled.Cmp(wantValue.Unscaled) == 0
+	case rowcodec.TimestampNtz:
+		gotValue, ok := got.(rowcodec.TimestampNtz)
+		return ok && gotValue == wantValue
+	case rowcodec.TimestampLtz:
+		gotValue, ok := got.(rowcodec.TimestampLtz)
+		return ok && gotValue == wantValue
+	case []any:
+		gotValue, ok := got.([]any)
+		if !ok || len(gotValue) != len(wantValue) {
+			return false
+		}
+		for i := range wantValue {
+			if !deepValueEqual(gotValue[i], wantValue[i]) {
+				return false
+			}
+		}
+		return true
+	case map[any]any:
+		gotValue, ok := got.(map[any]any)
+		if !ok || len(gotValue) != len(wantValue) {
+			return false
+		}
+		for key, wantItem := range wantValue {
+			gotItem, ok := gotValue[key]
+			if !ok || !deepValueEqual(gotItem, wantItem) {
+				return false
+			}
+		}
+		return true
+	default:
+		return got == want
+	}
 }
 
 func formatRow(fields []string, values []any) string {

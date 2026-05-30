@@ -13,6 +13,7 @@ USE fluss;
 DROP TABLE IF EXISTS e2e_orders;
 DROP TABLE IF EXISTS e2e_customers;
 DROP TABLE IF EXISTS e2e_customer_orders;
+DROP TABLE IF EXISTS e2e_all_types;
 
 CREATE TABLE e2e_orders (
   order_id BIGINT,
@@ -48,4 +49,28 @@ CREATE TABLE e2e_customer_orders (
   'bucket.key' = 'customer_id,customer_name',
   'table.kv.format' = 'indexed',
   'table.kv.format-version' = '2'
+);
+
+CREATE TABLE e2e_all_types (
+  event_id BIGINT,
+  bool_flag BOOLEAN,
+  tiny_value TINYINT,
+  small_value SMALLINT,
+  int_value INT,
+  big_value BIGINT,
+  float_value FLOAT,
+  double_value DOUBLE,
+  name STRING,
+  raw_bytes BYTES,
+  amount DECIMAL(10, 2),
+  event_date DATE,
+  event_time TIME(3),
+  event_ts TIMESTAMP(6),
+  event_ts_ltz TIMESTAMP_LTZ(6),
+  score_history ARRAY<INT>,
+  label_counts MAP<STRING, BIGINT>,
+  nested_payload ROW<note STRING, rank_value INT, tags ARRAY<STRING>>
+) WITH (
+  'bucket.num' = '1',
+  'table.log.format' = 'indexed'
 );

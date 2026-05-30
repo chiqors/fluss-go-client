@@ -50,6 +50,7 @@ The SQL bootstrap creates a Fluss catalog plus three simple tables:
 - log table: `e2e_orders`
 - primary-key table: `e2e_customers`
 - prefix-lookup table: `e2e_customer_orders`
+- all-types log table: `e2e_all_types`
 
 The bootstrap intentionally stops after schema creation. The Go service seeds and verifies data
 itself so the Apache Fluss Go SDK proves the full round-trip through its own public client surface.
@@ -61,6 +62,7 @@ The Go service then runs a matrix-style feature harness:
 - validates database existence checks
 - fetches table metadata and schema for the bootstrap tables
 - appends indexed log rows and verifies log `LimitScan` returns the latest rows, following the upstream Java client contract
+- appends and scans a dedicated all-types log row covering scalar, temporal, decimal, and nested `ARRAY/MAP/ROW` codec support
 - upserts indexed primary-key rows and verifies KV lookup round-trips
 - deletes a primary-key row and verifies lookup returns no value
 - performs a prefix lookup against the prefix-key table and verifies the returned rows by membership rather than unsafe ordering assumptions

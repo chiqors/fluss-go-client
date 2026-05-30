@@ -3,7 +3,7 @@
 Fluss has a rich set of features and native data types available to users. The tables below summarize what the upstream Java client supports today and what the Go client in this repo supports today.
 
 The current real-cluster support contract is exercised by the Fluss+Paimon demo under `demo/fluss-paimon`.
-That E2E harness validates the implemented Go rows for admin metadata, log append + limit scan, primary-key upsert + lookup, primary-key delete, and prefix lookup against a real Fluss deployment, using the upstream Java client semantics as the reference for overlapping behaviors.
+That E2E harness validates the implemented Go rows for admin metadata, log append + limit scan, all-types log round-trip, primary-key upsert + lookup, primary-key delete, and prefix lookup against a real Fluss deployment, using the upstream Java client semantics as the reference for overlapping behaviors.
 
 Legend:
 
@@ -48,7 +48,7 @@ For more details, see [Table Overview](https://fluss.apache.org/docs/table-desig
 | DOUBLE | ✔️ | ✔️ |
 | CHAR(n) | ✔️ | ✔️ |
 | STRING | ✔️ | ✔️ |
-| DECIMAL(p, s) | ✔️ | ~ |
+| DECIMAL(p, s) | ✔️ | ✔️ |
 | DATE | ✔️ | ✔️ |
 | TIME | ✔️ | ✔️ |
 | TIME(p) | ✔️ | ✔️ |
@@ -58,13 +58,17 @@ For more details, see [Table Overview](https://fluss.apache.org/docs/table-desig
 | TIMESTAMP_LTZ(p) | ✔️ | ✔️ |
 | BINARY(n) | ✔️ | ✔️ |
 | BYTES | ✔️ | ✔️ |
-| ARRAY<t> | ✔️ |  |
-| MAP<kt, vt> | ✔️ |  |
-| ROW<n0 t0, n1 t1, ...> | ✔️ |  |
+| ARRAY<t> | ✔️ | ✔️ |
+| MAP<kt, vt> | ✔️ | ✔️ |
+| ROW<n0 t0, n1 t1, ...> | ✔️ | ✔️ |
 
 :::tip
 For more details, see [Data Types](table-design/data-types.md).
 :::
+
+Current verification level:
+- scalar and composite row-codec support is covered by local Go round-trip tests
+- real-cluster E2E currently exercises the implemented admin, append, limit scan, upsert, delete, lookup, and prefix lookup flows, but not every individual data type above yet
 
 ## Admin Operations
 
