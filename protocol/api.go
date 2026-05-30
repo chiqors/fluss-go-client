@@ -26,7 +26,7 @@ const (
 	PrefixLookup       APIKey = 1034
 	GetDatabaseInfo    APIKey = 1035
 	Authenticate       APIKey = 1038
-	ScanKV             APIKey = 1061
+	ScanKV             APIKey = 1059
 )
 
 type ResponseType byte

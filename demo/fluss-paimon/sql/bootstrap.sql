@@ -19,7 +19,7 @@ CREATE TABLE e2e_orders (
   amount DECIMAL(15, 2),
   status STRING
 ) WITH (
-  'bucket.num' = '1',
+  'bucket' = '1',
   'table.datalake.enabled' = 'true',
   'table.datalake.freshness' = '30s'
 );
@@ -30,5 +30,5 @@ CREATE TABLE e2e_customers (
   customer_tier STRING,
   PRIMARY KEY (customer_id) NOT ENFORCED
 ) WITH (
-  'bucket.num' = '1'
+  'bucket' = '1'
 );

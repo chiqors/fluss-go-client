@@ -552,6 +552,7 @@ Use this section as the short memory of real repo progress.
 - [x] Added unit and mock integration tests
 - [x] Built `demo/fluss-paimon` as a minimal real-container E2E smoke test
 - [x] Removed unstable scan assertion from the demo smoke path
+- [x] Simplified SQL bootstrap to schema creation only so the smoke path does not hang on streaming INSERT jobs
 - [x] Aligned module path to `github.com/chiqors/fluss-go-client`
 - [x] Updated demo README to reflect the current direct-Go validation setup
 - [x] Added Phase 0 repo guardrails: CI workflow, contributing guide, and architecture overview

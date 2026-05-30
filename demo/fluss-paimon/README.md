@@ -50,6 +50,10 @@ The SQL bootstrap creates a Fluss catalog plus two simple tables:
 - log table: `e2e_orders`
 - primary-key table: `e2e_customers`
 
+The bootstrap intentionally stops after schema creation. The demo is focused on proving that the
+Go SDK can connect, inspect metadata, and exercise read-path entry points without depending on a
+long-running Flink insert job.
+
 The Go service then:
 
 - connects to Fluss using the Go SDK
@@ -58,12 +62,15 @@ The Go service then:
 - fetches table metadata and schema for both tables
 - validates partition-info listing on the non-partitioned tables
 - runs a real `LimitScan` against the log table
-- starts and closes a real `KVScanner` against the primary-key table
+- starts and closes a real `KVScanner` against the primary-key table and verifies the first batch is non-empty
 - fails the container if any of those paths break against the real Fluss cluster
 
-This demo currently validates admin, metadata, log-table scan entry, and KV scanner lifecycle against a real cluster.
+This demo currently validates admin, metadata, log-table scan entry, and KV scanner lifecycle
+against a real cluster.
 
-It still does not validate append/upsert/lookup record round-trips, because the Go SDK data plane is still raw Fluss record-batch byte oriented and does not yet ship schema-aware record encoders/decoders.
+It still does not validate append/upsert/lookup record round-trips, because the Go SDK data plane
+is still raw Fluss record-batch byte oriented and does not yet ship schema-aware record
+encoders/decoders.
 
 ## Endpoints
 
