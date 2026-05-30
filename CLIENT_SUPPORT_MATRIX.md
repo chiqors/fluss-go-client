@@ -3,7 +3,7 @@
 Fluss has a rich set of features and native data types available to users. The tables below summarize what the upstream Java client supports today and what the Go client in this repo supports today.
 
 The current real-cluster support contract is exercised by the Fluss+Paimon demo under `demo/fluss-paimon`.
-That E2E harness validates the implemented Go `client/` surface for admin metadata, log append + limit scan, all-types log round-trip, primary-key upsert + lookup, primary-key delete, and prefix lookup against a real Fluss deployment, using the upstream Java client semantics as the reference for overlapping behaviors.
+That E2E harness validates the implemented Go `client/` surface for admin metadata, log append + limit scan, all-types log round-trip, primary-key upsert + lookup, primary-key limit scan, primary-key delete, and prefix lookup against a real Fluss deployment, using the upstream Java client semantics as the reference for overlapping behaviors.
 
 Legend:
 
@@ -30,7 +30,7 @@ These operations live under the table append, scan, upsert, and lookup surfaces.
 | Primary Key | Lookup | ✔️ | ✔️ |
 | Primary Key | Prefix Lookup | ✔️ | ✔️ |
 | Primary Key | Typed Lookup | ✔️ |  |
-| Primary Key | Batch Scan with Limit | ✔️ |  |
+| Primary Key | Batch Scan with Limit | ✔️ | ✔️ |
 | Primary Key | Batch Scan (Snapshot) | ✔️ |  |
 
 For more details, see [Table Overview](https://fluss.apache.org/docs/table-design/overview).

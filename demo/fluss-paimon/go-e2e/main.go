@@ -79,6 +79,7 @@ func main() {
 		{section: "Data Operations", name: "LogAppendAndLimitScan", run: runLogAppendAndLimitScan},
 		{section: "Data Operations", name: "AllTypesAppendAndLimitScan", run: runAllTypesAppendAndLimitScan},
 		{section: "Data Operations", name: "PrimaryKeyUpsertAndLookup", run: runPrimaryKeyUpsertAndLookup},
+		{section: "Data Operations", name: "PrimaryKeyLimitScan", run: runPrimaryKeyLimitScan},
 		{section: "Data Operations", name: "PrimaryKeyDelete", run: runPrimaryKeyDelete},
 		{section: "Data Operations", name: "PrimaryKeyPrefixLookup", run: runPrimaryKeyPrefixLookup},
 	}
@@ -374,6 +375,42 @@ func runPrimaryKeyDelete(ctx context.Context, cli *client.Client, env environmen
 		return fmt.Errorf("lookup deleted row: got %v, want nil", found)
 	}
 	fmt.Printf("DeleteKV: deleted customer_id=%v and lookup returned no row\n", row.Values[0])
+	return nil
+}
+
+func runPrimaryKeyLimitScan(ctx context.Context, cli *client.Client, env environment) error {
+	schema := client.NewSchema(
+		client.Int64Type(),
+		client.StringType(),
+		client.StringType(),
+	)
+	fields := []string{"customer_id", "customer_name", "customer_tier"}
+	want := []decodedRow{
+		{fields: fields, values: []any{int64(42), "Ada Lovelace", "gold"}},
+		{fields: fields, values: []any{int64(43), "Grace Hopper", "platinum"}},
+	}
+
+	limitResult, err := cli.Table(env.kvTable).LimitScan(ctx, nil, 0, int32(len(want)))
+	if err != nil {
+		return fmt.Errorf("limit scan kv table: %w", err)
+	}
+	if limitResult.IsLogTable {
+		return fmt.Errorf("limit scan kv table: expected primary-key-table result")
+	}
+	decoded, err := client.DecodeIndexedLimitScanRows(schema, limitResult)
+	if err != nil {
+		return fmt.Errorf("decode kv limit scan: %w", err)
+	}
+	got := make([]decodedRow, 0, len(decoded))
+	for _, row := range decoded {
+		got = append(got, decodedRow{fields: fields, values: row})
+	}
+	if !sameDecodedRowSet(got, want) {
+		return fmt.Errorf("limit scan kv rows: got %v, want %v", formatDecodedRows(got), formatDecodedRows(want))
+	}
+	for i, row := range got {
+		fmt.Printf("LimitScanKV Row[%d]: %s\n", i, formatRow(row.fields, row.values))
+	}
 	return nil
 }
 

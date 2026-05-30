@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	rowcodec "github.com/chiqors/fluss-go-client/internal/codec/row"
 	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
 	"google.golang.org/protobuf/proto"
 )
@@ -462,6 +463,68 @@ func TestKVScannerLifecycle(t *testing.T) {
 	if err := scanner.Close(ctx); err != nil {
 		t.Fatalf("scanner.Close() error = %v", err)
 	}
+}
+
+func TestDecodeIndexedLimitScanRows(t *testing.T) {
+	logSchema := NewSchema(Int64Type(), StringType())
+	logRow, err := NewRow(logSchema, int64(7), "event")
+	if err != nil {
+		t.Fatalf("NewRow(log) error = %v", err)
+	}
+	logPayload, err := rowcodec.EncodeLogRecordBatch(logSchema, logRow.Values, rowcodec.LogBatchOptions{SchemaID: 1, Indexed: true})
+	if err != nil {
+		t.Fatalf("EncodeLogRecordBatch() error = %v", err)
+	}
+	logRows, err := DecodeIndexedLimitScanRows(logSchema, LimitScanResult{IsLogTable: true, Records: logPayload})
+	if err != nil {
+		t.Fatalf("DecodeIndexedLimitScanRows(log) error = %v", err)
+	}
+	if len(logRows) != 1 || logRows[0][0] != int64(7) || logRows[0][1] != "event" {
+		t.Fatalf("unexpected log rows: %#v", logRows)
+	}
+
+	kvSchema := NewSchema(Int64Type(), StringType(), StringType())
+	kvRow, err := NewRow(kvSchema, int64(42), "Ada Lovelace", "gold")
+	if err != nil {
+		t.Fatalf("NewRow(kv) error = %v", err)
+	}
+	kvPayload, err := rowcodec.EncodeKvRecordBatch(kvSchema, kvRow.Values, rowcodec.KvBatchOptions{SchemaID: 1, Indexed: true, KeyColumns: []int{0}})
+	if err != nil {
+		t.Fatalf("EncodeKvRecordBatch() error = %v", err)
+	}
+	_, recordPayload, err := decodeKvBatchForTest(kvPayload)
+	if err != nil {
+		t.Fatalf("decodeKvBatchForTest() error = %v", err)
+	}
+	keyLen, n := binary.Uvarint(recordPayload[4:])
+	if n <= 0 {
+		t.Fatalf("invalid key length varint")
+	}
+	rowPayload := recordPayload[4+n+int(keyLen):]
+	valueRecord := make([]byte, 0, 4+2+len(rowPayload))
+	valueRecord = binary.LittleEndian.AppendUint32(valueRecord, uint32(2+len(rowPayload)))
+	valueRecord = binary.LittleEndian.AppendUint16(valueRecord, 1)
+	valueRecord = append(valueRecord, rowPayload...)
+	valueBatch := make([]byte, 0, 9+len(valueRecord))
+	valueBatch = binary.LittleEndian.AppendUint32(valueBatch, uint32(5+len(valueRecord)))
+	valueBatch = append(valueBatch, 0)
+	valueBatch = binary.LittleEndian.AppendUint32(valueBatch, 1)
+	valueBatch = append(valueBatch, valueRecord...)
+
+	kvRows, err := DecodeIndexedLimitScanRows(kvSchema, LimitScanResult{IsLogTable: false, Records: valueBatch})
+	if err != nil {
+		t.Fatalf("DecodeIndexedLimitScanRows(kv) error = %v", err)
+	}
+	if len(kvRows) != 1 || kvRows[0][0] != int64(42) || kvRows[0][1] != "Ada Lovelace" || kvRows[0][2] != "gold" {
+		t.Fatalf("unexpected kv rows: %#v", kvRows)
+	}
+}
+
+func decodeKvBatchForTest(payload []byte) (int32, []byte, error) {
+	if len(payload) < 28 {
+		return 0, nil, fmt.Errorf("kv batch too short")
+	}
+	return int32(binary.LittleEndian.Uint16(payload[9:11])), payload[28:], nil
 }
 
 func TestAppendWriterLifecycleAndDefaults(t *testing.T) {

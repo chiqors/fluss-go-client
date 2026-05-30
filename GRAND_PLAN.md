@@ -60,6 +60,7 @@ Success means a Go team can:
 
 ### Progress Ledger
 
+- 2026-05-30: promoted primary-key limit scan into a decoded public data operation with shared limit-scan row helpers and real-cluster E2E coverage, moving another support-matrix data-operation row out of raw-byte-only usage.
 - 2026-05-30: exposed Go-native public row/schema/type constructors and log-batch decode helpers through `client/`; validated all implemented scalar and composite data types in the Fluss+Paimon E2E all-types log round-trip.
 - 2026-05-30: validated the Go demo against the real Fluss/Paimon stack, including prefix lookup round-trip on `e2e_customer_orders`; updated the demo docs and support matrix to match the current behavior.
 - 2026-05-30: reworked the Fluss/Paimon Go E2E into a strict support-contract harness aligned to upstream Java client semantics for append, log limit scan, lookup, delete, and prefix lookup; updated docs and support matrix to reflect `GetTableSchema`, delete, and Paimon-backed demo coverage.

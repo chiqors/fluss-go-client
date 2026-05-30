@@ -1,4 +1,4 @@
-waiting for bootstrap tables until 2026-05-30T07:05:05Z
+waiting for bootstrap tables until 2026-05-30T07:30:29Z
 WaitingForTables: have=[e2e_orders e2e_all_types e2e_customers e2e_customer_orders] expected=[e2e_orders e2e_customers e2e_customer_orders e2e_all_types]
 [Admin] ListDatabases
 ListDatabases: 0 databases (1 summaries)
@@ -39,6 +39,10 @@ UpsertKV[1]: bucket=0 log_end_offset=2
 LookupKV Row[0]: {customer_id=42, customer_name=Ada Lovelace, customer_tier=gold}
 LookupKV Row[1]: {customer_id=43, customer_name=Grace Hopper, customer_tier=platinum}
 [PASS] Data Operations/PrimaryKeyUpsertAndLookup
+[Data Operations] PrimaryKeyLimitScan
+LimitScanKV Row[0]: {customer_id=42, customer_name=Ada Lovelace, customer_tier=gold}
+LimitScanKV Row[1]: {customer_id=43, customer_name=Grace Hopper, customer_tier=platinum}
+[PASS] Data Operations/PrimaryKeyLimitScan
 [Data Operations] PrimaryKeyDelete
 DeleteKV: deleted customer_id=99 and lookup returned no row
 [PASS] Data Operations/PrimaryKeyDelete

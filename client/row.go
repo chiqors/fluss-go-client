@@ -118,6 +118,23 @@ func DecodeIndexedLogBatchRows(schema Schema, payload []byte) ([][]any, error) {
 	return values, nil
 }
 
+// DecodeIndexedValueBatchRows decodes a value-record batch payload returned by KV limit scans.
+func DecodeIndexedValueBatchRows(schema Schema, payload []byte) ([][]any, error) {
+	values, err := rowcodec.DecodeValueRecordBatchRows(schema, payload)
+	if err != nil {
+		return nil, fmt.Errorf("fluss: decode indexed value batch rows: %w", err)
+	}
+	return values, nil
+}
+
+// DecodeIndexedLimitScanRows decodes limit-scan rows for either log or primary-key tables.
+func DecodeIndexedLimitScanRows(schema Schema, result LimitScanResult) ([][]any, error) {
+	if result.IsLogTable {
+		return DecodeIndexedLogBatchRows(schema, result.Records)
+	}
+	return DecodeIndexedValueBatchRows(schema, result.Records)
+}
+
 // DecodeIndexedLookupValuePayload decodes a KV lookup value that is prefixed with a 2-byte schema id.
 func DecodeIndexedLookupValuePayload(schema Schema, payload []byte) ([]any, error) {
 	if len(payload) < 2 {

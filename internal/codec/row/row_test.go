@@ -2,6 +2,7 @@ package rowcodec
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"math/big"
 	"sort"
@@ -149,6 +150,64 @@ func TestEncodeKvRecordBatchIncludesLengthPrefixedKey(t *testing.T) {
 	}
 	if len(payload) == 0 {
 		t.Fatal("EncodeKvRecordBatch() returned empty payload")
+	}
+}
+
+func TestDecodeValueRecordBatchRows(t *testing.T) {
+	schema := NewSchema(Int64Type(), StringType(), StringType())
+
+	row1, err := NewRow(schema, int64(42), "Ada Lovelace", "gold")
+	if err != nil {
+		t.Fatalf("NewRow(row1) error = %v", err)
+	}
+	row2, err := NewRow(schema, int64(43), "Grace Hopper", "platinum")
+	if err != nil {
+		t.Fatalf("NewRow(row2) error = %v", err)
+	}
+
+	kv1, err := EncodeKvRecordBatch(schema, row1.Values, KvBatchOptions{SchemaID: 1, Indexed: true, KeyColumns: []int{0}})
+	if err != nil {
+		t.Fatalf("EncodeKvRecordBatch(row1) error = %v", err)
+	}
+	kv2, err := EncodeKvRecordBatch(schema, row2.Values, KvBatchOptions{SchemaID: 1, Indexed: true, KeyColumns: []int{0}})
+	if err != nil {
+		t.Fatalf("EncodeKvRecordBatch(row2) error = %v", err)
+	}
+
+	buildValueRecord := func(kvPayload []byte) []byte {
+		_, recordPayload, err := decodeKvBatch(kvPayload)
+		if err != nil {
+			t.Fatalf("decodeKvBatch() error = %v", err)
+		}
+		keyLen, n := binary.Uvarint(recordPayload[4:])
+		if n <= 0 {
+			t.Fatalf("invalid key length varint")
+		}
+		rowPayload := recordPayload[4+n+int(keyLen):]
+		out := make([]byte, 0, 4+2+len(rowPayload))
+		out = binary.LittleEndian.AppendUint32(out, uint32(2+len(rowPayload)))
+		out = binary.LittleEndian.AppendUint16(out, 1)
+		out = append(out, rowPayload...)
+		return out
+	}
+
+	valueRecords := append(buildValueRecord(kv1), buildValueRecord(kv2)...)
+	batch := make([]byte, 0, 9+len(valueRecords))
+	batch = binary.LittleEndian.AppendUint32(batch, uint32(5+len(valueRecords)))
+	batch = append(batch, 0)
+	batch = binary.LittleEndian.AppendUint32(batch, 2)
+	batch = append(batch, valueRecords...)
+
+	got, err := DecodeValueRecordBatchRows(schema, batch)
+	if err != nil {
+		t.Fatalf("DecodeValueRecordBatchRows() error = %v", err)
+	}
+	want := [][]any{row1.Values, row2.Values}
+	if len(got) != len(want) {
+		t.Fatalf("row count = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		assertValuesEqual(t, got[i], want[i])
 	}
 }
 

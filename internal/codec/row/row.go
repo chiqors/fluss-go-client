@@ -126,6 +126,46 @@ func DecodeKvRecordBatch(schema Schema, payload []byte) ([]any, error) {
 	return decodeRow(schema, recordPayload, true)
 }
 
+func DecodeValueRecordBatchRows(schema Schema, payload []byte) ([][]any, error) {
+	if err := schema.Validate(); err != nil {
+		return nil, err
+	}
+	if len(payload) < 9 {
+		return nil, fmt.Errorf("data: value batch payload too short")
+	}
+	declared := int(binary.LittleEndian.Uint32(payload[0:4]))
+	if declared+4 > len(payload) {
+		return nil, fmt.Errorf("data: value batch payload truncated")
+	}
+	if payload[4] != 0 {
+		return nil, fmt.Errorf("data: unsupported value batch magic %d", payload[4])
+	}
+	recordCount := int(binary.LittleEndian.Uint32(payload[5:9]))
+	rows := make([][]any, 0, recordCount)
+	off := 9
+	limit := declared + 4
+	for len(rows) < recordCount {
+		if off+6 > limit {
+			return nil, fmt.Errorf("data: value record payload truncated")
+		}
+		recordLen := int(binary.LittleEndian.Uint32(payload[off : off+4]))
+		recordEnd := off + 4 + recordLen
+		if recordEnd > limit {
+			return nil, fmt.Errorf("data: value record payload truncated")
+		}
+		row, err := decodeRow(schema, payload[off+6:recordEnd], true)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, row)
+		off = recordEnd
+	}
+	if off != limit {
+		return nil, fmt.Errorf("data: incorrect declared value batch size")
+	}
+	return rows, nil
+}
+
 func encodeLogBatch(schemaID int32, recordPayload []byte) []byte {
 	buf := make([]byte, 0, logHeaderSize+len(recordPayload))
 	buf = binary.LittleEndian.AppendUint64(buf, 0) // base offset
