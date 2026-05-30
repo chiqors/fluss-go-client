@@ -64,11 +64,6 @@ For more details, see [Table Overview](https://fluss.apache.org/docs/table-desig
 
 For more details, see [Data Types](https://fluss.apache.org/docs/table-design/data-types).
 
-Current verification level:
-- scalar and composite row encoding/decoding is covered by local Go round-trip tests
-- public row/schema constructors and decode helpers are available through `client/`
-- real-cluster E2E currently exercises the implemented admin, append, limit scan, upsert, delete, lookup, prefix lookup, and all-types log round-trip flows
-
 ## Admin Operations
 
 | Entity | Operation | Java Client | Go Client |
