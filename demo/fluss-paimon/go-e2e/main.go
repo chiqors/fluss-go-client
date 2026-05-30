@@ -18,6 +18,7 @@ func main() {
 	database := getenv("FLUSS_DATABASE", "fluss")
 	logTable := getenv("FLUSS_LOG_TABLE", "e2e_orders")
 	kvTable := getenv("FLUSS_KV_TABLE", "e2e_customers")
+	prefixTable := getenv("FLUSS_PREFIX_TABLE", "e2e_customer_orders")
 
 	cli, err := client.Dial(ctx, client.Config{
 		Endpoints: []string{bootstrap},
@@ -32,8 +33,9 @@ func main() {
 	// Just test reads - existing tables come from SQL bootstrap
 	logPath := client.TablePath{DatabaseName: database, TableName: logTable}
 	kvPath := client.TablePath{DatabaseName: database, TableName: kvTable}
+	prefixPath := client.TablePath{DatabaseName: database, TableName: prefixTable}
 
-	if err := waitForTables(ctx, admin, database, []string{logTable, kvTable}); err != nil {
+	if err := waitForTables(ctx, admin, database, []string{logTable, kvTable, prefixTable}); err != nil {
 		fatalf("wait for bootstrap tables: %v", err)
 	}
 
@@ -57,7 +59,7 @@ func main() {
 	fmt.Printf("ListTables: %d tables (%v)\n", len(tables), tables)
 
 	// Table Info + Schema
-	for _, path := range []client.TablePath{logPath, kvPath} {
+	for _, path := range []client.TablePath{logPath, kvPath, prefixPath} {
 		info, err := cli.Table(path).Info(ctx)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Table %s.%s Info: %v\n", path.DatabaseName, path.TableName, err)
@@ -118,6 +120,36 @@ func main() {
 		fmt.Printf("UpsertKV[%d]: bucket=%d log_end_offset=%d\n", i, putResult[0].BucketID, putResult[0].LogEndOffset)
 	}
 
+	prefixSchema := rowcodec.NewSchema(rowcodec.Int64Type(), rowcodec.StringType(), rowcodec.Int64Type(), rowcodec.StringType())
+	prefixRows := []rowcodec.Row{}
+	prefixPayloads := [][]byte{}
+	for _, values := range [][]any{
+		{int64(1), "aaaaaaaaa", int64(9001), "pending"},
+		{int64(1), "aaaaaaaaa", int64(9002), "packed"},
+		{int64(2), "aaaaaaaaa", int64(9003), "shipped"},
+	} {
+		row, err := rowcodec.NewRow(prefixSchema, values...)
+		if err != nil {
+			fatalf("build prefix row: %v", err)
+		}
+		prefixRows = append(prefixRows, row)
+	}
+	for i, row := range prefixRows {
+		putResult, err := cli.Table(prefixPath).UpsertIndexedRow(ctx, 0, row, []int32{0, 1, 2})
+		if err != nil {
+			fatalf("upsert prefix row %d: %v", i, err)
+		}
+		if len(putResult) != 1 {
+			fatalf("upsert prefix result %d: unexpected result count %d", i, len(putResult))
+		}
+		fmt.Printf("UpsertPrefix[%d]: bucket=%d log_end_offset=%d\n", i, putResult[0].BucketID, putResult[0].LogEndOffset)
+		payload, err := row.EncodeLookupKey(0, 1)
+		if err != nil {
+			fatalf("encode prefix key %d: %v", i, err)
+		}
+		prefixPayloads = append(prefixPayloads, payload)
+	}
+
 	// LimitScan should now have real payload
 	limitResult, err := cli.Table(logPath).LimitScan(ctx, nil, 0, 10)
 	if err != nil {
@@ -165,6 +197,28 @@ func main() {
 			fatalf("kv lookup row %d: got %v, want %v", i, decodedKV, kvRows[i].Values)
 		}
 		fmt.Printf("LookupKV Row[%d]: %s\n", i, formatRow([]string{"customer_id", "customer_name", "customer_tier"}, decodedKV))
+	}
+
+	prefixLookupReq := client.LookupBucketRequest{BucketID: 0, Keys: [][]byte{prefixPayloads[0]}}
+	prefixLookupResult, err := cli.Table(prefixPath).PrefixLookup(ctx, []client.LookupBucketRequest{prefixLookupReq})
+	if err != nil {
+		fatalf("prefix lookup: %v", err)
+	}
+	if len(prefixLookupResult) != 1 || len(prefixLookupResult[0].Values) != 1 {
+		fatalf("prefix lookup: unexpected result %#v", prefixLookupResult)
+	}
+	if len(prefixLookupResult[0].Values[0]) != len(prefixRows[:2]) {
+		fatalf("prefix lookup: expected %d matches, got %#v", len(prefixRows[:2]), prefixLookupResult[0].Values[0])
+	}
+	for i, payload := range prefixLookupResult[0].Values[0] {
+		decodedPrefix, err := client.DecodeIndexedLookupValuePayload(prefixSchema, payload)
+		if err != nil {
+			fatalf("decode prefix lookup %d: %v", i, err)
+		}
+		if !rowsEqual(decodedPrefix, prefixRows[i].Values) {
+			fatalf("prefix lookup row %d: got %v, want %v", i, decodedPrefix, prefixRows[i].Values)
+		}
+		fmt.Printf("PrefixLookup Row[%d]: %s\n", i, formatRow([]string{"customer_id", "customer_name", "order_id", "order_status"}, decodedPrefix))
 	}
 
 	fmt.Printf("\n=== E2E Complete ===\n")

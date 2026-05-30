@@ -12,12 +12,12 @@ func TestEncodeLookupKeyUsesCompactedEncoding(t *testing.T) {
 		t.Fatalf("NewRow() error = %v", err)
 	}
 
-	got, err := row.EncodeLookupKey(0)
+	got, err := row.EncodeLookupKey(0, 1)
 	if err != nil {
 		t.Fatalf("EncodeLookupKey() error = %v", err)
 	}
 
-	want := []byte{42}
+	want := []byte{42, 'A', 'd', 'a', ' ', 'L', 'o', 'v', 'e', 'l', 'a', 'c', 'e'}
 
 	if !bytes.Equal(got, want) {
 		t.Fatalf("EncodeLookupKey() = %v, want %v", got, want)

@@ -291,19 +291,13 @@ func encodeCompactedKeyValue(field FieldType, value any) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		out := make([]byte, 0, 4+len(v))
-		out = binary.LittleEndian.AppendUint32(out, uint32(len(v)))
-		out = append(out, v...)
-		return out, nil
+		return append([]byte(nil), v...), nil
 	case TypeBytes:
 		v, err := asBytes(value)
 		if err != nil {
 			return nil, err
 		}
-		out := make([]byte, 0, 4+len(v))
-		out = binary.LittleEndian.AppendUint32(out, uint32(len(v)))
-		out = append(out, v...)
-		return out, nil
+		return append([]byte(nil), v...), nil
 	default:
 		return nil, fmt.Errorf("data: unsupported lookup key type %q", field.Kind)
 	}

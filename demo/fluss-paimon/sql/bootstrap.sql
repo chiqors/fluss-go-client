@@ -12,6 +12,7 @@ USE fluss;
 
 DROP TABLE IF EXISTS e2e_orders;
 DROP TABLE IF EXISTS e2e_customers;
+DROP TABLE IF EXISTS e2e_customer_orders;
 
 CREATE TABLE e2e_orders (
   order_id BIGINT,
@@ -32,5 +33,19 @@ CREATE TABLE e2e_customers (
   PRIMARY KEY (customer_id) NOT ENFORCED
 ) WITH (
   'bucket.num' = '1',
-  'table.kv.format' = 'indexed'
+  'table.kv.format' = 'indexed',
+  'table.kv.format-version' = '2'
+);
+
+CREATE TABLE e2e_customer_orders (
+  customer_id BIGINT,
+  customer_name STRING,
+  order_id BIGINT,
+  order_status STRING,
+  PRIMARY KEY (customer_id, customer_name, order_id) NOT ENFORCED
+) WITH (
+  'bucket.num' = '1',
+  'bucket.key' = 'customer_id,customer_name',
+  'table.kv.format' = 'indexed',
+  'table.kv.format-version' = '2'
 );

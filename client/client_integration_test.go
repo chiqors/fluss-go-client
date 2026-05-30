@@ -213,6 +213,7 @@ func TestDialAndAdminFlow(t *testing.T) {
 			flusspb.ApiKey_TableExists,
 			flusspb.ApiKey_ListPartitionInfos,
 			flusspb.ApiKey_LimitScan,
+			flusspb.ApiKey_PrefixLookup,
 		)), nil
 	})
 
@@ -286,6 +287,29 @@ func TestDialAndAdminFlow(t *testing.T) {
 		}), nil
 	})
 
+	srv.on(flusspb.ApiKey_PrefixLookup, func(reqID int32, payload []byte) ([]byte, error) {
+		_ = reqID
+		req := &flusspb.PrefixLookupRequest{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		if req.GetTableId() != 10 || len(req.GetBucketsReq()) != 1 {
+			t.Fatalf("unexpected prefix lookup request: %#v", req)
+		}
+		bucketReq := req.GetBucketsReq()[0]
+		if bucketReq.GetBucketId() != 0 || len(bucketReq.GetKeys()) != 1 {
+			t.Fatalf("unexpected prefix lookup bucket request: %#v", bucketReq)
+		}
+		return mustMarshal(t, &flusspb.PrefixLookupResponse{
+			BucketsResp: []*flusspb.PbPrefixLookupRespForBucket{{
+				BucketId: proto.Int32(0),
+				ValueLists: []*flusspb.PbValueList{{
+					Values: [][]byte{[]byte("prefix-row-1"), []byte("prefix-row-2")},
+				}},
+			}},
+		}), nil
+	})
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -336,6 +360,20 @@ func TestDialAndAdminFlow(t *testing.T) {
 	}
 	if !limitResult.IsLogTable || string(limitResult.Records) != "batch-data" {
 		t.Fatalf("unexpected limit result: %#v", limitResult)
+	}
+
+	prefixResult, err := cli.Table(TablePath{DatabaseName: "demo", TableName: "events"}).PrefixLookup(ctx, []LookupBucketRequest{{
+		BucketID: 0,
+		Keys:     [][]byte{[]byte("prefix-key")},
+	}})
+	if err != nil {
+		t.Fatalf("PrefixLookup() error = %v", err)
+	}
+	if len(prefixResult) != 1 || len(prefixResult[0].Values) != 1 || len(prefixResult[0].Values[0]) != 2 {
+		t.Fatalf("unexpected prefix result: %#v", prefixResult)
+	}
+	if string(prefixResult[0].Values[0][0]) != "prefix-row-1" || string(prefixResult[0].Values[0][1]) != "prefix-row-2" {
+		t.Fatalf("unexpected prefix payloads: %#v", prefixResult)
 	}
 }
 

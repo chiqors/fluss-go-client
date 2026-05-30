@@ -1,8 +1,3 @@
----
-title: "Client Support Matrix"
-sidebar_position: 5
----
-
 # Client Feature Support Matrix
 
 Fluss has a rich set of features and native data types available to users. The following tables summarize the features available across various Fluss clients. 
@@ -11,7 +6,7 @@ Fluss has a rich set of features and native data types available to users. The f
 
 These data operations are available under TableAppend, TableScan, TableUpsert and TableLookup interfaces.
 
-| Table Type   | Operations                 | [Java Client](/apis/java-client.md) | Rust Client | Python Client | C++ Client |
+| Table Type   | Operations                 | [Java Client](/apis/java-client.md) | Go |
 |--------------|----------------------------|-------------------------------------|-------------|---------------|------------|
 | Log          | Append                     | ✔️                                  | ✔️          | ✔️            | ✔️         |
 | Log          | Typed Append               | ✔️                                  |             |               |            |

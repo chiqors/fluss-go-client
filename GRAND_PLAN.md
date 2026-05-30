@@ -23,7 +23,7 @@ Use `[~]` when work has meaningfully started but is not done yet. Once the outco
 
 ## Target
 
-Build a pure Go, production-ready Fluss client SDK for Fluss `0.9.x` that feels idiomatic to Go users while covering the core capabilities of the upstream Java client.
+Build a pure Go, production-ready Fluss client SDK for Fluss `0.9.x` that feels idiomatic to Go users while pursuing feature parity with the upstream Java client.
 
 Success means a Go team can:
 
@@ -73,7 +73,7 @@ Success means a Go team can:
 - [x] Metadata cache and leader routing foundation
 - [x] Admin metadata calls for databases, tables, schema, and partitions
 - [x] Raw table operations for append, upsert, lookup, prefix lookup, fetch log, limit scan, and KV scan
-- [x] Demo E2E now exercises append, upsert, limit scan, and KV lookup round-trips against a real cluster
+- [x] Demo E2E now exercises append, upsert, limit scan, KV lookup, and Java-semantic prefix lookup round-trips against a real cluster
 - [x] Unit and mock-style integration coverage for the current client surface
 - [x] Containerized Fluss/Paimon smoke-test demo at [demo/fluss-paimon/README.md](./demo/fluss-paimon/README.md)
 
@@ -109,6 +109,8 @@ The SDK is “production ready” only when all of these are true:
 - [ ] CI can catch protocol, compatibility, and regression failures
 
 ## Upstream Parity Map
+
+This repo is explicitly tracking Java-client feature parity as the long-term product direction, while keeping the public API Go-native.
 
 The upstream Java client includes these major areas:
 
@@ -559,6 +561,7 @@ Use this section as the short memory of real repo progress.
 - [x] Removed unstable scan assertion from the demo smoke path
 - [x] Simplified SQL bootstrap to schema creation only so the smoke path does not hang on streaming INSERT jobs
 - [x] Added initial Go row/data helpers and wired `go-e2e` to seed sample append/upsert rows through the client API
+- [x] Aligned demo prefix lookup coverage with the upstream Java client contract for bucket-key-prefix lookups
 - [x] Aligned module path to `github.com/chiqors/fluss-go-client`
 - [x] Updated demo README to reflect the current direct-Go validation setup
 - [x] Added Phase 0 repo guardrails: CI workflow, contributing guide, and architecture overview
@@ -574,6 +577,10 @@ Use this section as the short memory of real repo progress.
 - [x] Documented proto-first refactor rule for SDK internals and protocol-adjacent interfaces
 - [x] Recorded follow-up to audit remaining hand-written protocol constants and local wire helpers
 - [x] Moved auth, metadata, protocol, transport, and codec implementation packages under `internal/`
+
+### 2026-05-30
+
+- [x] Clarified that Java-client feature parity is the guiding product direction for this SDK
 
 ## Decision Log
 
