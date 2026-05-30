@@ -84,6 +84,14 @@ func EncodeKvRecordBatch(schema Schema, values []any, opts KvBatchOptions) ([]by
 	return encodeKvBatch(opts.SchemaID, recordPayload), nil
 }
 
+func EncodeKvDeleteRecordBatch(schema Schema, values []any, opts KvBatchOptions) ([]byte, error) {
+	recordPayload, err := encodeKvDeleteRecord(schema, values, opts)
+	if err != nil {
+		return nil, err
+	}
+	return encodeKvBatch(opts.SchemaID, recordPayload), nil
+}
+
 func DecodeLogRecordBatch(schema Schema, payload []byte) ([]any, error) {
 	_, recordPayload, err := decodeLogBatch(payload)
 	if err != nil {
@@ -219,11 +227,38 @@ func encodeKvRecord(schema Schema, values []any, opts KvBatchOptions) ([]byte, e
 	if err != nil {
 		return nil, err
 	}
-	out := make([]byte, 0, 4+len(keyPayload)+len(rowPayload))
-	out = binary.LittleEndian.AppendUint32(out, uint32(len(keyPayload)+len(rowPayload)))
-	out = binary.AppendUvarint(out, uint64(len(keyPayload)))
+	keyLenPayload := make([]byte, 0, binary.MaxVarintLen64)
+	keyLenPayload = binary.AppendUvarint(keyLenPayload, uint64(len(keyPayload)))
+	out := make([]byte, 0, 4+len(keyLenPayload)+len(keyPayload)+len(rowPayload))
+	out = binary.LittleEndian.AppendUint32(out, uint32(len(keyLenPayload)+len(keyPayload)+len(rowPayload)))
+	out = append(out, keyLenPayload...)
 	out = append(out, keyPayload...)
 	out = append(out, rowPayload...)
+	return out, nil
+}
+
+func encodeKvDeleteRecord(schema Schema, values []any, opts KvBatchOptions) ([]byte, error) {
+	if len(schema.Fields) == 0 {
+		return nil, fmt.Errorf("rowcodec: kv schema has no fields")
+	}
+	row, err := NewRow(schema, values...)
+	if err != nil {
+		return nil, err
+	}
+	keyColumns := opts.KeyColumns
+	if len(keyColumns) == 0 {
+		keyColumns = []int{0}
+	}
+	keyPayload, err := row.EncodeLookupKey(keyColumns...)
+	if err != nil {
+		return nil, err
+	}
+	keyLenPayload := make([]byte, 0, binary.MaxVarintLen64)
+	keyLenPayload = binary.AppendUvarint(keyLenPayload, uint64(len(keyPayload)))
+	out := make([]byte, 0, 4+len(keyLenPayload)+len(keyPayload))
+	out = binary.LittleEndian.AppendUint32(out, uint32(len(keyLenPayload)+len(keyPayload)))
+	out = append(out, keyLenPayload...)
+	out = append(out, keyPayload...)
 	return out, nil
 }
 

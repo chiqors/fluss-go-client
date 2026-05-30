@@ -51,25 +51,25 @@ The SQL bootstrap creates a Fluss catalog plus three simple tables:
 - primary-key table: `e2e_customers`
 - prefix-lookup table: `e2e_customer_orders`
 
-The bootstrap intentionally stops after schema creation. The demo is focused on proving that the
-Go SDK can connect, inspect metadata, and exercise read-path entry points without depending on a
-long-running Flink insert job.
+The bootstrap intentionally stops after schema creation. The Go service seeds and verifies data
+itself so the Apache Fluss Go SDK proves the full round-trip through its own public client surface.
 
 The Go service then runs a matrix-style feature harness:
 
 - connects to Fluss using the Go SDK
 - lists databases and tables
-- validates database and table existence checks
-- fetches table metadata and schema for both tables
-- seeds one indexed log row and one indexed KV row through the Go client
-- validates table metadata for the bootstrap tables
-- runs a real `LimitScan` against the log table
-- exercises `KVScanner` lifecycle behavior against the primary-key table
-- performs a KV lookup against the primary-key table and verifies the stored row round-trip
-- performs a prefix lookup against the prefix-key table and verifies the returned rows round-trip
+- validates database existence checks
+- fetches table metadata and schema for the bootstrap tables
+- appends indexed log rows and verifies log `LimitScan` returns the latest rows, following the upstream Java client contract
+- upserts indexed primary-key rows and verifies KV lookup round-trips
+- deletes a primary-key row and verifies lookup returns no value
+- performs a prefix lookup against the prefix-key table and verifies the returned rows by membership rather than unsafe ordering assumptions
 - fails the container if any of those paths break against the real Fluss cluster
 
-The current harness covers the implemented Go rows in [CLIENT_SUPPORT_MATRIX.md](../../CLIENT_SUPPORT_MATRIX.md) and marks partial surfaces explicitly in the run output.
+The current harness is the canonical support-contract E2E for the implemented Go rows in [CLIENT_SUPPORT_MATRIX.md](../../CLIENT_SUPPORT_MATRIX.md).
+For overlapping features, the behavioral reference is the upstream Java client at `/Users/administrator/Documents/Labs/fluss/fluss-client`, adapted to the Go-native public API.
+
+The demo also proves that these Go SDK operations succeed against a real Fluss deployment configured with Paimon-backed lakehouse infrastructure. It does not claim extra lake-specific Go APIs beyond the operations it actually executes.
 
 ## Endpoints
 

@@ -46,6 +46,30 @@ func (t *TableClient) UpsertIndexedRow(ctx context.Context, bucketID int32, row 
 	return t.UpsertKV(ctx, -1, 15000, targetColumns, nil, []BucketRecordBatch{{BucketID: bucketID, Records: payload}})
 }
 
+// DeleteIndexedRow encodes a tombstone record for the row key and deletes it from a KV table.
+func (t *TableClient) DeleteIndexedRow(ctx context.Context, bucketID int32, row rowcodec.Row, targetColumns []int32) ([]PutResult, error) {
+	info, err := t.ensureTableInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	columnNames, _, primaryKeys, _, err := metadata.ParseTableDescriptor(info.JSON)
+	if err != nil {
+		return nil, fmt.Errorf("fluss: parse table keys: %w", err)
+	}
+	keyColumns, err := keyColumnsByName(columnNames, primaryKeys)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := rowcodec.EncodeKvDeleteRecordBatch(row.Schema, row.Values, rowcodec.KvBatchOptions{SchemaID: info.SchemaID, Indexed: true, KeyColumns: keyColumns})
+	if err != nil {
+		return nil, err
+	}
+	if targetColumns == nil {
+		targetColumns = []int32{}
+	}
+	return t.UpsertKV(ctx, -1, 15000, targetColumns, nil, []BucketRecordBatch{{BucketID: bucketID, Records: payload}})
+}
+
 func keyColumnsByName(columnNames []string, keyNames []string) ([]int, error) {
 	if len(keyNames) == 0 {
 		return nil, nil

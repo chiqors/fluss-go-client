@@ -2,6 +2,9 @@
 
 Fluss has a rich set of features and native data types available to users. The tables below summarize what the upstream Java client supports today and what the Go client in this repo supports today.
 
+The current real-cluster support contract is exercised by the Fluss+Paimon demo under `demo/fluss-paimon`.
+That E2E harness validates the implemented Go rows for admin metadata, log append + limit scan, primary-key upsert + lookup, primary-key delete, and prefix lookup against a real Fluss deployment, using the upstream Java client semantics as the reference for overlapping behaviors.
+
 Legend:
 
 - `✔️` implemented and usable
@@ -75,7 +78,7 @@ For more details, see [Data Types](table-design/data-types.md).
 | Table | AlterTable | ✔️ |  |
 | Table | CreateTable | ✔️ | ✔️ |
 | Table | DropTable | ✔️ | ✔️ |
-| Table | GetTableSchema | ✔️ |  |
+| Table | GetTableSchema | ✔️ | ✔️ |
 | Table | GetTableInfo | ✔️ | ✔️ |
 | Table | ListTables | ✔️ | ✔️ |
 | Partition | CreatePartition | ✔️ |  |
@@ -101,7 +104,9 @@ For more details, see [Data Types](table-design/data-types.md).
 | Format | Java Client | Go Client |
 |--------|-------------|-----------|
 | Iceberg | ✔️ |  |
-| Lance | ✔️ | ✔️ |
-| Paimon | ✔️ |  |
+| Lance | ✔️ |  |
+| Paimon | ✔️ | ✔️ |
+
+For Go, `Paimon` here means the SDK is validated against a Fluss deployment configured with Paimon-backed lakehouse infrastructure. It does not imply additional lake-specific public APIs beyond the flows currently implemented and exercised.
 
 For more details, see [Streaming Lakehouse](https://fluss.apache.org/docs/streaming-lakehouse/overview/).

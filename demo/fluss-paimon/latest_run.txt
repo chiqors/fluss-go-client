@@ -1,0 +1,47 @@
+waiting for bootstrap tables until 2026-05-30T06:44:56Z
+WaitingForTables: have=[e2e_orders e2e_customers e2e_customer_orders] expected=[e2e_orders e2e_customers e2e_customer_orders]
+[Admin] ListDatabases
+ListDatabases: 0 databases (1 summaries)
+[PASS] Admin/ListDatabases
+[Admin] DatabaseExists
+DatabaseExists(fluss): true
+[PASS] Admin/DatabaseExists
+[Admin] ListTables
+ListTables: 3 tables ([e2e_customer_orders e2e_customers e2e_orders])
+[PASS] Admin/ListTables
+[Admin] GetTableInfo
+GetTableInfo fluss.e2e_orders: ID=0 SchemaID=1
+GetTableInfo fluss.e2e_customers: ID=1 SchemaID=1
+GetTableInfo fluss.e2e_customer_orders: ID=2 SchemaID=1
+[PASS] Admin/GetTableInfo
+[Admin] GetTableSchema
+GetTableSchema fluss.e2e_orders: SchemaID=1
+GetTableSchema fluss.e2e_customers: SchemaID=1
+GetTableSchema fluss.e2e_customer_orders: SchemaID=1
+[PASS] Admin/GetTableSchema
+[Data Operations] LogAppendAndLimitScan
+AppendLog[0]: bucket=0 base_offset=0
+AppendLog[1]: bucket=0 base_offset=1
+AppendLog[2]: bucket=0 base_offset=2
+LimitScanLog Row[0]: {order_id=2001, customer_id=101, amount=19.95, status=created}
+LimitScanLog Row[1]: {order_id=2002, customer_id=102, amount=29.5, status=packed}
+LimitScanLog Row[2]: {order_id=2003, customer_id=103, amount=39.25, status=shipped}
+[PASS] Data Operations/LogAppendAndLimitScan
+[Data Operations] PrimaryKeyUpsertAndLookup
+UpsertKV[0]: bucket=0 log_end_offset=1
+UpsertKV[1]: bucket=0 log_end_offset=2
+LookupKV Row[0]: {customer_id=42, customer_name=Ada Lovelace, customer_tier=gold}
+LookupKV Row[1]: {customer_id=43, customer_name=Grace Hopper, customer_tier=platinum}
+[PASS] Data Operations/PrimaryKeyUpsertAndLookup
+[Data Operations] PrimaryKeyDelete
+DeleteKV: deleted customer_id=99 and lookup returned no row
+[PASS] Data Operations/PrimaryKeyDelete
+[Data Operations] PrimaryKeyPrefixLookup
+UpsertPrefix[0]: bucket=0 log_end_offset=1
+UpsertPrefix[1]: bucket=0 log_end_offset=2
+UpsertPrefix[2]: bucket=0 log_end_offset=3
+PrefixLookup Row[0]: {customer_id=1, customer_name=aaaaaaaaa, order_id=9001, order_status=pending}
+PrefixLookup Row[1]: {customer_id=1, customer_name=aaaaaaaaa, order_id=9002, order_status=packed}
+[PASS] Data Operations/PrimaryKeyPrefixLookup
+
+=== E2E Complete ===

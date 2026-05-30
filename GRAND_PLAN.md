@@ -61,6 +61,7 @@ Success means a Go team can:
 ### Progress Ledger
 
 - 2026-05-30: validated the Go demo against the real Fluss/Paimon stack, including prefix lookup round-trip on `e2e_customer_orders`; updated the demo docs and support matrix to match the current behavior.
+- 2026-05-30: reworked the Fluss/Paimon Go E2E into a strict support-contract harness aligned to upstream Java client semantics for append, log limit scan, lookup, delete, and prefix lookup; updated docs and support matrix to reflect `GetTableSchema`, delete, and Paimon-backed demo coverage.
 
 ### Versioning policy
 
@@ -76,8 +77,8 @@ Success means a Go team can:
 - [x] Basic pluggable auth interface
 - [x] Metadata cache and leader routing foundation
 - [x] Admin metadata calls for databases, tables, schema, and partitions
-- [x] Raw table operations for append, upsert, lookup, prefix lookup, fetch log, limit scan, and KV scan
-- [x] Demo E2E now exercises append, upsert, limit scan, KV lookup, and prefix lookup round-trips against a real cluster
+- [x] Raw table operations for append, upsert, delete, lookup, prefix lookup, fetch log, limit scan, and KV scan
+- [x] Demo E2E now exercises append, delete, limit scan, KV lookup, and prefix lookup round-trips against a real cluster
 - [x] Unit and mock-style integration coverage for the current client surface
 - [x] Containerized Fluss/Paimon smoke-test demo at [demo/fluss-paimon/README.md](./demo/fluss-paimon/README.md)
 
@@ -86,7 +87,7 @@ Success means a Go team can:
 - [x] `go test ./...`
 - [x] `go build ./...`
 - [x] Docker Compose E2E smoke test that boots Fluss + Flink/Paimon and validates direct Go client access
-- [x] Docker Compose E2E smoke test now validates prefix lookup against the real cluster
+- [x] Docker Compose E2E smoke test now validates Java-aligned append, delete, limit scan, lookup, and prefix lookup behavior against the real cluster
 
 ### Not production-ready yet
 

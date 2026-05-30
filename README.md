@@ -15,7 +15,7 @@ Current implementation status:
 - API version negotiation and pluggable auth hook
 - Metadata cache and bucket leader routing
 - Admin APIs for database/table/schema/partition metadata
-- Raw table operations for append, upsert, lookup, prefix lookup, fetch log, limit scan, and KV scan
+- Raw table operations for append, upsert, delete, lookup, prefix lookup, fetch log, limit scan, and KV scan
 
 The current data APIs operate on Fluss wire-format record batches as raw bytes. Arrow-first row
 encoders/decoders and richer typed row helpers are intentionally left as the next layer on top of
@@ -150,7 +150,7 @@ It boots:
 
 - Fluss coordinator and tablet server
 - Flink/Paimon tiering components
-- SQL bootstrap for a test table
+- SQL bootstrap for the E2E tables
 - a containerized Go E2E checker
 
 Start it with:
@@ -160,6 +160,8 @@ docker compose -f demo/fluss-paimon/docker-compose.yml up --build --abort-on-con
 ```
 
 See [demo/fluss-paimon/README.md](./demo/fluss-paimon/README.md) for details.
+
+The demo is the canonical real-cluster support-contract check for overlapping Go SDK behaviors, using the upstream Java client semantics as the reference and adapting them to the Go-native public API.
 
 ## Development
 
