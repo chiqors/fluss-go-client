@@ -171,6 +171,8 @@ Goal: make the wire layer stable and debuggable.
 - [x] Keep generated protobuf code internal and avoid exposing it as the main SDK surface
 - [x] Treat the proto file as the source of truth for internal wire shapes and protocol-adjacent interfaces
 - [x] Prefer generated types for SDK internals and keep handwritten wrappers thin and Go-idiomatic
+- [~] Audit the remaining hand-written protocol constants and helper models for proto-backed replacement where the source contract exists
+- [x] Move implementation packages under `internal/` so `client/` stays the only public SDK package
 
 ### Core
 
@@ -570,6 +572,8 @@ Use this section as the short memory of real repo progress.
 - [x] Migrated hot-path table response parsing from reflection-heavy dynamic messages to generated protobuf responses
 - [x] Removed `InvokeDynamic`, deleted dynamic proto registry usage, and migrated mock integration tests to generated protobuf fixtures
 - [x] Documented proto-first refactor rule for SDK internals and protocol-adjacent interfaces
+- [x] Recorded follow-up to audit remaining hand-written protocol constants and local wire helpers
+- [x] Moved auth, metadata, protocol, transport, and codec implementation packages under `internal/`
 
 ## Decision Log
 

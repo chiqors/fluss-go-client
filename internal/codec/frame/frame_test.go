@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/chiqors/fluss-go-client/protocol"
+	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
 )
 
 func TestEncodeRequest(t *testing.T) {
 	frame := RequestFrame{
-		APIKey:     protocol.GetMetadata,
+		APIKey:     flusspb.ApiKey_GetMetadata,
 		APIVersion: 0,
 		RequestID:  42,
 		Payload:    []byte{1, 2, 3},
@@ -31,7 +31,7 @@ func TestReadResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadResponse() error = %v", err)
 	}
-	if frame.Type != protocol.ResponseSuccess {
+	if frame.Type != flusspb.ResponseType_ResponseSuccess {
 		t.Fatalf("unexpected type %v", frame.Type)
 	}
 	if frame.RequestID != 9 {

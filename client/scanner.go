@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
-	"github.com/chiqors/fluss-go-client/protocol"
+	"github.com/chiqors/fluss-go-client/internal/protocol"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -30,7 +30,7 @@ func (s *KVScanner) Next(ctx context.Context) (ScanKVResult, error) {
 	if err != nil {
 		return ScanKVResult{}, err
 	}
-	resp, err := s.table.client.rpc.Invoke(ctx, node.Address(), protocol.ScanKV, "ScanKvRequest", "ScanKvResponse", func(m proto.Message) error {
+	resp, err := s.table.client.rpc.Invoke(ctx, node.Address(), flusspb.ApiKey_ScanKV, "ScanKvRequest", "ScanKvResponse", func(m proto.Message) error {
 		req, ok := m.(*flusspb.ScanKvRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected scan kv request type %T", m)
@@ -95,7 +95,7 @@ func (s *KVScanner) Close(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.table.client.rpc.Invoke(ctx, node.Address(), protocol.ScanKV, "ScanKvRequest", "ScanKvResponse", func(m proto.Message) error {
+	_, err = s.table.client.rpc.Invoke(ctx, node.Address(), flusspb.ApiKey_ScanKV, "ScanKvRequest", "ScanKvResponse", func(m proto.Message) error {
 		req, ok := m.(*flusspb.ScanKvRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected scan kv close request type %T", m)

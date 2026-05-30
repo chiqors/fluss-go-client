@@ -21,6 +21,187 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type ApiKey int32
+
+const (
+	ApiKey_APIVersions        ApiKey = 1000
+	ApiKey_CreateDatabase     ApiKey = 1001
+	ApiKey_DropDatabase       ApiKey = 1002
+	ApiKey_ListDatabases      ApiKey = 1003
+	ApiKey_DatabaseExists     ApiKey = 1004
+	ApiKey_CreateTable        ApiKey = 1005
+	ApiKey_DropTable          ApiKey = 1006
+	ApiKey_GetTableInfo       ApiKey = 1007
+	ApiKey_ListTables         ApiKey = 1008
+	ApiKey_ListPartitionInfos ApiKey = 1009
+	ApiKey_TableExists        ApiKey = 1010
+	ApiKey_GetTableSchema     ApiKey = 1011
+	ApiKey_GetMetadata        ApiKey = 1012
+	ApiKey_ProduceLog         ApiKey = 1014
+	ApiKey_FetchLog           ApiKey = 1015
+	ApiKey_PutKV              ApiKey = 1016
+	ApiKey_Lookup             ApiKey = 1017
+	ApiKey_ListOffsets        ApiKey = 1021
+	ApiKey_InitWriter         ApiKey = 1026
+	ApiKey_LimitScan          ApiKey = 1033
+	ApiKey_PrefixLookup       ApiKey = 1034
+	ApiKey_GetDatabaseInfo    ApiKey = 1035
+	ApiKey_Authenticate       ApiKey = 1038
+	ApiKey_ScanKV             ApiKey = 1059
+)
+
+// Enum value maps for ApiKey.
+var (
+	ApiKey_name = map[int32]string{
+		1000: "APIVersions",
+		1001: "CreateDatabase",
+		1002: "DropDatabase",
+		1003: "ListDatabases",
+		1004: "DatabaseExists",
+		1005: "CreateTable",
+		1006: "DropTable",
+		1007: "GetTableInfo",
+		1008: "ListTables",
+		1009: "ListPartitionInfos",
+		1010: "TableExists",
+		1011: "GetTableSchema",
+		1012: "GetMetadata",
+		1014: "ProduceLog",
+		1015: "FetchLog",
+		1016: "PutKV",
+		1017: "Lookup",
+		1021: "ListOffsets",
+		1026: "InitWriter",
+		1033: "LimitScan",
+		1034: "PrefixLookup",
+		1035: "GetDatabaseInfo",
+		1038: "Authenticate",
+		1059: "ScanKV",
+	}
+	ApiKey_value = map[string]int32{
+		"APIVersions":        1000,
+		"CreateDatabase":     1001,
+		"DropDatabase":       1002,
+		"ListDatabases":      1003,
+		"DatabaseExists":     1004,
+		"CreateTable":        1005,
+		"DropTable":          1006,
+		"GetTableInfo":       1007,
+		"ListTables":         1008,
+		"ListPartitionInfos": 1009,
+		"TableExists":        1010,
+		"GetTableSchema":     1011,
+		"GetMetadata":        1012,
+		"ProduceLog":         1014,
+		"FetchLog":           1015,
+		"PutKV":              1016,
+		"Lookup":             1017,
+		"ListOffsets":        1021,
+		"InitWriter":         1026,
+		"LimitScan":          1033,
+		"PrefixLookup":       1034,
+		"GetDatabaseInfo":    1035,
+		"Authenticate":       1038,
+		"ScanKV":             1059,
+	}
+)
+
+func (x ApiKey) Enum() *ApiKey {
+	p := new(ApiKey)
+	*p = x
+	return p
+}
+
+func (x ApiKey) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ApiKey) Descriptor() protoreflect.EnumDescriptor {
+	return file_fluss_proto_enumTypes[0].Descriptor()
+}
+
+func (ApiKey) Type() protoreflect.EnumType {
+	return &file_fluss_proto_enumTypes[0]
+}
+
+func (x ApiKey) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Do not use.
+func (x *ApiKey) UnmarshalJSON(b []byte) error {
+	num, err := protoimpl.X.UnmarshalJSONEnum(x.Descriptor(), b)
+	if err != nil {
+		return err
+	}
+	*x = ApiKey(num)
+	return nil
+}
+
+// Deprecated: Use ApiKey.Descriptor instead.
+func (ApiKey) EnumDescriptor() ([]byte, []int) {
+	return file_fluss_proto_rawDescGZIP(), []int{0}
+}
+
+type ResponseType int32
+
+const (
+	ResponseType_ResponseSuccess ResponseType = 0
+	ResponseType_ResponseError   ResponseType = 1
+	ResponseType_ResponseFailure ResponseType = 2
+)
+
+// Enum value maps for ResponseType.
+var (
+	ResponseType_name = map[int32]string{
+		0: "ResponseSuccess",
+		1: "ResponseError",
+		2: "ResponseFailure",
+	}
+	ResponseType_value = map[string]int32{
+		"ResponseSuccess": 0,
+		"ResponseError":   1,
+		"ResponseFailure": 2,
+	}
+)
+
+func (x ResponseType) Enum() *ResponseType {
+	p := new(ResponseType)
+	*p = x
+	return p
+}
+
+func (x ResponseType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ResponseType) Descriptor() protoreflect.EnumDescriptor {
+	return file_fluss_proto_enumTypes[1].Descriptor()
+}
+
+func (ResponseType) Type() protoreflect.EnumType {
+	return &file_fluss_proto_enumTypes[1]
+}
+
+func (x ResponseType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Do not use.
+func (x *ResponseType) UnmarshalJSON(b []byte) error {
+	num, err := protoimpl.X.UnmarshalJSONEnum(x.Descriptor(), b)
+	if err != nil {
+		return err
+	}
+	*x = ResponseType(num)
+	return nil
+}
+
+// Deprecated: Use ResponseType.Descriptor instead.
+func (ResponseType) EnumDescriptor() ([]byte, []int) {
+	return file_fluss_proto_rawDescGZIP(), []int{1}
+}
+
 type ErrorResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ErrorCode     *int32                 `protobuf:"varint,1,req,name=error_code,json=errorCode" json:"error_code,omitempty"`
@@ -4692,7 +4873,40 @@ const file_fluss_proto_rawDesc = "" +
 	"\bprotocol\x18\x01 \x02(\tR\bprotocol\x12\x14\n" +
 	"\x05token\x18\x02 \x02(\fR\x05token\"4\n" +
 	"\x14AuthenticateResponse\x12\x1c\n" +
-	"\tchallenge\x18\x01 \x01(\fR\tchallengeBEZCgithub.com/chiqors/fluss-go-client/internal/proto/gen/fluss;flusspb"
+	"\tchallenge\x18\x01 \x01(\fR\tchallenge*\xb8\x03\n" +
+	"\x06ApiKey\x12\x10\n" +
+	"\vAPIVersions\x10\xe8\a\x12\x13\n" +
+	"\x0eCreateDatabase\x10\xe9\a\x12\x11\n" +
+	"\fDropDatabase\x10\xea\a\x12\x12\n" +
+	"\rListDatabases\x10\xeb\a\x12\x13\n" +
+	"\x0eDatabaseExists\x10\xec\a\x12\x10\n" +
+	"\vCreateTable\x10\xed\a\x12\x0e\n" +
+	"\tDropTable\x10\xee\a\x12\x11\n" +
+	"\fGetTableInfo\x10\xef\a\x12\x0f\n" +
+	"\n" +
+	"ListTables\x10\xf0\a\x12\x17\n" +
+	"\x12ListPartitionInfos\x10\xf1\a\x12\x10\n" +
+	"\vTableExists\x10\xf2\a\x12\x13\n" +
+	"\x0eGetTableSchema\x10\xf3\a\x12\x10\n" +
+	"\vGetMetadata\x10\xf4\a\x12\x0f\n" +
+	"\n" +
+	"ProduceLog\x10\xf6\a\x12\r\n" +
+	"\bFetchLog\x10\xf7\a\x12\n" +
+	"\n" +
+	"\x05PutKV\x10\xf8\a\x12\v\n" +
+	"\x06Lookup\x10\xf9\a\x12\x10\n" +
+	"\vListOffsets\x10\xfd\a\x12\x0f\n" +
+	"\n" +
+	"InitWriter\x10\x82\b\x12\x0e\n" +
+	"\tLimitScan\x10\x89\b\x12\x11\n" +
+	"\fPrefixLookup\x10\x8a\b\x12\x14\n" +
+	"\x0fGetDatabaseInfo\x10\x8b\b\x12\x11\n" +
+	"\fAuthenticate\x10\x8e\b\x12\v\n" +
+	"\x06ScanKV\x10\xa3\b*K\n" +
+	"\fResponseType\x12\x13\n" +
+	"\x0fResponseSuccess\x10\x00\x12\x11\n" +
+	"\rResponseError\x10\x01\x12\x13\n" +
+	"\x0fResponseFailure\x10\x02BEZCgithub.com/chiqors/fluss-go-client/internal/proto/gen/fluss;flusspb"
 
 var (
 	file_fluss_proto_rawDescOnce sync.Once
@@ -4706,124 +4920,127 @@ func file_fluss_proto_rawDescGZIP() []byte {
 	return file_fluss_proto_rawDescData
 }
 
+var file_fluss_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_fluss_proto_msgTypes = make([]protoimpl.MessageInfo, 76)
 var file_fluss_proto_goTypes = []any{
-	(*ErrorResponse)(nil),                      // 0: fluss.ErrorResponse
-	(*ApiVersionsRequest)(nil),                 // 1: fluss.ApiVersionsRequest
-	(*PbApiVersion)(nil),                       // 2: fluss.PbApiVersion
-	(*ApiVersionsResponse)(nil),                // 3: fluss.ApiVersionsResponse
-	(*PbTablePath)(nil),                        // 4: fluss.PbTablePath
-	(*PbPhysicalTablePath)(nil),                // 5: fluss.PbPhysicalTablePath
-	(*PbServerNode)(nil),                       // 6: fluss.PbServerNode
-	(*PbBucketMetadata)(nil),                   // 7: fluss.PbBucketMetadata
-	(*PbTableMetadata)(nil),                    // 8: fluss.PbTableMetadata
-	(*PbPartitionMetadata)(nil),                // 9: fluss.PbPartitionMetadata
-	(*MetadataRequest)(nil),                    // 10: fluss.MetadataRequest
-	(*MetadataResponse)(nil),                   // 11: fluss.MetadataResponse
-	(*GetTableSchemaRequest)(nil),              // 12: fluss.GetTableSchemaRequest
-	(*GetTableSchemaResponse)(nil),             // 13: fluss.GetTableSchemaResponse
-	(*CreateDatabaseRequest)(nil),              // 14: fluss.CreateDatabaseRequest
-	(*CreateDatabaseResponse)(nil),             // 15: fluss.CreateDatabaseResponse
-	(*DropDatabaseRequest)(nil),                // 16: fluss.DropDatabaseRequest
-	(*DropDatabaseResponse)(nil),               // 17: fluss.DropDatabaseResponse
-	(*GetDatabaseInfoRequest)(nil),             // 18: fluss.GetDatabaseInfoRequest
-	(*GetDatabaseInfoResponse)(nil),            // 19: fluss.GetDatabaseInfoResponse
-	(*DatabaseExistsRequest)(nil),              // 20: fluss.DatabaseExistsRequest
-	(*DatabaseExistsResponse)(nil),             // 21: fluss.DatabaseExistsResponse
-	(*PbDatabaseSummary)(nil),                  // 22: fluss.PbDatabaseSummary
-	(*ListDatabasesRequest)(nil),               // 23: fluss.ListDatabasesRequest
-	(*ListDatabasesResponse)(nil),              // 24: fluss.ListDatabasesResponse
-	(*CreateTableRequest)(nil),                 // 25: fluss.CreateTableRequest
-	(*CreateTableResponse)(nil),                // 26: fluss.CreateTableResponse
-	(*DropTableRequest)(nil),                   // 27: fluss.DropTableRequest
-	(*DropTableResponse)(nil),                  // 28: fluss.DropTableResponse
-	(*GetTableInfoRequest)(nil),                // 29: fluss.GetTableInfoRequest
-	(*GetTableInfoResponse)(nil),               // 30: fluss.GetTableInfoResponse
-	(*ListTablesRequest)(nil),                  // 31: fluss.ListTablesRequest
-	(*ListTablesResponse)(nil),                 // 32: fluss.ListTablesResponse
-	(*TableExistsRequest)(nil),                 // 33: fluss.TableExistsRequest
-	(*TableExistsResponse)(nil),                // 34: fluss.TableExistsResponse
-	(*GetFileSystemSecurityTokenRequest)(nil),  // 35: fluss.GetFileSystemSecurityTokenRequest
-	(*GetFileSystemSecurityTokenResponse)(nil), // 36: fluss.GetFileSystemSecurityTokenResponse
-	(*PbKeyValue)(nil),                         // 37: fluss.PbKeyValue
-	(*PbPartitionSpec)(nil),                    // 38: fluss.PbPartitionSpec
-	(*ListPartitionInfosRequest)(nil),          // 39: fluss.ListPartitionInfosRequest
-	(*PbPartitionInfo)(nil),                    // 40: fluss.PbPartitionInfo
-	(*ListPartitionInfosResponse)(nil),         // 41: fluss.ListPartitionInfosResponse
-	(*PbProduceLogReqForBucket)(nil),           // 42: fluss.PbProduceLogReqForBucket
-	(*ProduceLogRequest)(nil),                  // 43: fluss.ProduceLogRequest
-	(*PbProduceLogRespForBucket)(nil),          // 44: fluss.PbProduceLogRespForBucket
-	(*ProduceLogResponse)(nil),                 // 45: fluss.ProduceLogResponse
-	(*PbPutKvReqForBucket)(nil),                // 46: fluss.PbPutKvReqForBucket
-	(*PutKvRequest)(nil),                       // 47: fluss.PutKvRequest
-	(*PbPutKvRespForBucket)(nil),               // 48: fluss.PbPutKvRespForBucket
-	(*PutKvResponse)(nil),                      // 49: fluss.PutKvResponse
-	(*PbLookupReqForBucket)(nil),               // 50: fluss.PbLookupReqForBucket
-	(*LookupRequest)(nil),                      // 51: fluss.LookupRequest
-	(*PbValue)(nil),                            // 52: fluss.PbValue
-	(*PbLookupRespForBucket)(nil),              // 53: fluss.PbLookupRespForBucket
-	(*LookupResponse)(nil),                     // 54: fluss.LookupResponse
-	(*PbPrefixLookupReqForBucket)(nil),         // 55: fluss.PbPrefixLookupReqForBucket
-	(*PrefixLookupRequest)(nil),                // 56: fluss.PrefixLookupRequest
-	(*PbValueList)(nil),                        // 57: fluss.PbValueList
-	(*PbPrefixLookupRespForBucket)(nil),        // 58: fluss.PbPrefixLookupRespForBucket
-	(*PrefixLookupResponse)(nil),               // 59: fluss.PrefixLookupResponse
-	(*PbFetchLogReqForBucket)(nil),             // 60: fluss.PbFetchLogReqForBucket
-	(*PbFetchLogReqForTable)(nil),              // 61: fluss.PbFetchLogReqForTable
-	(*FetchLogRequest)(nil),                    // 62: fluss.FetchLogRequest
-	(*PbRemoteLogFetchInfo)(nil),               // 63: fluss.PbRemoteLogFetchInfo
-	(*PbFetchLogRespForBucket)(nil),            // 64: fluss.PbFetchLogRespForBucket
-	(*PbFetchLogRespForTable)(nil),             // 65: fluss.PbFetchLogRespForTable
-	(*FetchLogResponse)(nil),                   // 66: fluss.FetchLogResponse
-	(*LimitScanRequest)(nil),                   // 67: fluss.LimitScanRequest
-	(*LimitScanResponse)(nil),                  // 68: fluss.LimitScanResponse
-	(*PbScanReqForBucket)(nil),                 // 69: fluss.PbScanReqForBucket
-	(*ScanKvRequest)(nil),                      // 70: fluss.ScanKvRequest
-	(*ScanKvResponse)(nil),                     // 71: fluss.ScanKvResponse
-	(*InitWriterRequest)(nil),                  // 72: fluss.InitWriterRequest
-	(*InitWriterResponse)(nil),                 // 73: fluss.InitWriterResponse
-	(*AuthenticateRequest)(nil),                // 74: fluss.AuthenticateRequest
-	(*AuthenticateResponse)(nil),               // 75: fluss.AuthenticateResponse
+	(ApiKey)(0),                                // 0: fluss.ApiKey
+	(ResponseType)(0),                          // 1: fluss.ResponseType
+	(*ErrorResponse)(nil),                      // 2: fluss.ErrorResponse
+	(*ApiVersionsRequest)(nil),                 // 3: fluss.ApiVersionsRequest
+	(*PbApiVersion)(nil),                       // 4: fluss.PbApiVersion
+	(*ApiVersionsResponse)(nil),                // 5: fluss.ApiVersionsResponse
+	(*PbTablePath)(nil),                        // 6: fluss.PbTablePath
+	(*PbPhysicalTablePath)(nil),                // 7: fluss.PbPhysicalTablePath
+	(*PbServerNode)(nil),                       // 8: fluss.PbServerNode
+	(*PbBucketMetadata)(nil),                   // 9: fluss.PbBucketMetadata
+	(*PbTableMetadata)(nil),                    // 10: fluss.PbTableMetadata
+	(*PbPartitionMetadata)(nil),                // 11: fluss.PbPartitionMetadata
+	(*MetadataRequest)(nil),                    // 12: fluss.MetadataRequest
+	(*MetadataResponse)(nil),                   // 13: fluss.MetadataResponse
+	(*GetTableSchemaRequest)(nil),              // 14: fluss.GetTableSchemaRequest
+	(*GetTableSchemaResponse)(nil),             // 15: fluss.GetTableSchemaResponse
+	(*CreateDatabaseRequest)(nil),              // 16: fluss.CreateDatabaseRequest
+	(*CreateDatabaseResponse)(nil),             // 17: fluss.CreateDatabaseResponse
+	(*DropDatabaseRequest)(nil),                // 18: fluss.DropDatabaseRequest
+	(*DropDatabaseResponse)(nil),               // 19: fluss.DropDatabaseResponse
+	(*GetDatabaseInfoRequest)(nil),             // 20: fluss.GetDatabaseInfoRequest
+	(*GetDatabaseInfoResponse)(nil),            // 21: fluss.GetDatabaseInfoResponse
+	(*DatabaseExistsRequest)(nil),              // 22: fluss.DatabaseExistsRequest
+	(*DatabaseExistsResponse)(nil),             // 23: fluss.DatabaseExistsResponse
+	(*PbDatabaseSummary)(nil),                  // 24: fluss.PbDatabaseSummary
+	(*ListDatabasesRequest)(nil),               // 25: fluss.ListDatabasesRequest
+	(*ListDatabasesResponse)(nil),              // 26: fluss.ListDatabasesResponse
+	(*CreateTableRequest)(nil),                 // 27: fluss.CreateTableRequest
+	(*CreateTableResponse)(nil),                // 28: fluss.CreateTableResponse
+	(*DropTableRequest)(nil),                   // 29: fluss.DropTableRequest
+	(*DropTableResponse)(nil),                  // 30: fluss.DropTableResponse
+	(*GetTableInfoRequest)(nil),                // 31: fluss.GetTableInfoRequest
+	(*GetTableInfoResponse)(nil),               // 32: fluss.GetTableInfoResponse
+	(*ListTablesRequest)(nil),                  // 33: fluss.ListTablesRequest
+	(*ListTablesResponse)(nil),                 // 34: fluss.ListTablesResponse
+	(*TableExistsRequest)(nil),                 // 35: fluss.TableExistsRequest
+	(*TableExistsResponse)(nil),                // 36: fluss.TableExistsResponse
+	(*GetFileSystemSecurityTokenRequest)(nil),  // 37: fluss.GetFileSystemSecurityTokenRequest
+	(*GetFileSystemSecurityTokenResponse)(nil), // 38: fluss.GetFileSystemSecurityTokenResponse
+	(*PbKeyValue)(nil),                         // 39: fluss.PbKeyValue
+	(*PbPartitionSpec)(nil),                    // 40: fluss.PbPartitionSpec
+	(*ListPartitionInfosRequest)(nil),          // 41: fluss.ListPartitionInfosRequest
+	(*PbPartitionInfo)(nil),                    // 42: fluss.PbPartitionInfo
+	(*ListPartitionInfosResponse)(nil),         // 43: fluss.ListPartitionInfosResponse
+	(*PbProduceLogReqForBucket)(nil),           // 44: fluss.PbProduceLogReqForBucket
+	(*ProduceLogRequest)(nil),                  // 45: fluss.ProduceLogRequest
+	(*PbProduceLogRespForBucket)(nil),          // 46: fluss.PbProduceLogRespForBucket
+	(*ProduceLogResponse)(nil),                 // 47: fluss.ProduceLogResponse
+	(*PbPutKvReqForBucket)(nil),                // 48: fluss.PbPutKvReqForBucket
+	(*PutKvRequest)(nil),                       // 49: fluss.PutKvRequest
+	(*PbPutKvRespForBucket)(nil),               // 50: fluss.PbPutKvRespForBucket
+	(*PutKvResponse)(nil),                      // 51: fluss.PutKvResponse
+	(*PbLookupReqForBucket)(nil),               // 52: fluss.PbLookupReqForBucket
+	(*LookupRequest)(nil),                      // 53: fluss.LookupRequest
+	(*PbValue)(nil),                            // 54: fluss.PbValue
+	(*PbLookupRespForBucket)(nil),              // 55: fluss.PbLookupRespForBucket
+	(*LookupResponse)(nil),                     // 56: fluss.LookupResponse
+	(*PbPrefixLookupReqForBucket)(nil),         // 57: fluss.PbPrefixLookupReqForBucket
+	(*PrefixLookupRequest)(nil),                // 58: fluss.PrefixLookupRequest
+	(*PbValueList)(nil),                        // 59: fluss.PbValueList
+	(*PbPrefixLookupRespForBucket)(nil),        // 60: fluss.PbPrefixLookupRespForBucket
+	(*PrefixLookupResponse)(nil),               // 61: fluss.PrefixLookupResponse
+	(*PbFetchLogReqForBucket)(nil),             // 62: fluss.PbFetchLogReqForBucket
+	(*PbFetchLogReqForTable)(nil),              // 63: fluss.PbFetchLogReqForTable
+	(*FetchLogRequest)(nil),                    // 64: fluss.FetchLogRequest
+	(*PbRemoteLogFetchInfo)(nil),               // 65: fluss.PbRemoteLogFetchInfo
+	(*PbFetchLogRespForBucket)(nil),            // 66: fluss.PbFetchLogRespForBucket
+	(*PbFetchLogRespForTable)(nil),             // 67: fluss.PbFetchLogRespForTable
+	(*FetchLogResponse)(nil),                   // 68: fluss.FetchLogResponse
+	(*LimitScanRequest)(nil),                   // 69: fluss.LimitScanRequest
+	(*LimitScanResponse)(nil),                  // 70: fluss.LimitScanResponse
+	(*PbScanReqForBucket)(nil),                 // 71: fluss.PbScanReqForBucket
+	(*ScanKvRequest)(nil),                      // 72: fluss.ScanKvRequest
+	(*ScanKvResponse)(nil),                     // 73: fluss.ScanKvResponse
+	(*InitWriterRequest)(nil),                  // 74: fluss.InitWriterRequest
+	(*InitWriterResponse)(nil),                 // 75: fluss.InitWriterResponse
+	(*AuthenticateRequest)(nil),                // 76: fluss.AuthenticateRequest
+	(*AuthenticateResponse)(nil),               // 77: fluss.AuthenticateResponse
 }
 var file_fluss_proto_depIdxs = []int32{
-	2,  // 0: fluss.ApiVersionsResponse.api_versions:type_name -> fluss.PbApiVersion
-	4,  // 1: fluss.PbTableMetadata.table_path:type_name -> fluss.PbTablePath
-	7,  // 2: fluss.PbTableMetadata.bucket_metadata:type_name -> fluss.PbBucketMetadata
-	7,  // 3: fluss.PbPartitionMetadata.bucket_metadata:type_name -> fluss.PbBucketMetadata
-	4,  // 4: fluss.MetadataRequest.table_path:type_name -> fluss.PbTablePath
-	5,  // 5: fluss.MetadataRequest.partitions_path:type_name -> fluss.PbPhysicalTablePath
-	6,  // 6: fluss.MetadataResponse.coordinator_server:type_name -> fluss.PbServerNode
-	6,  // 7: fluss.MetadataResponse.tablet_servers:type_name -> fluss.PbServerNode
-	8,  // 8: fluss.MetadataResponse.table_metadata:type_name -> fluss.PbTableMetadata
-	9,  // 9: fluss.MetadataResponse.partition_metadata:type_name -> fluss.PbPartitionMetadata
-	4,  // 10: fluss.GetTableSchemaRequest.table_path:type_name -> fluss.PbTablePath
-	22, // 11: fluss.ListDatabasesResponse.database_summary:type_name -> fluss.PbDatabaseSummary
-	4,  // 12: fluss.CreateTableRequest.table_path:type_name -> fluss.PbTablePath
-	4,  // 13: fluss.DropTableRequest.table_path:type_name -> fluss.PbTablePath
-	4,  // 14: fluss.GetTableInfoRequest.table_path:type_name -> fluss.PbTablePath
-	4,  // 15: fluss.TableExistsRequest.table_path:type_name -> fluss.PbTablePath
-	37, // 16: fluss.PbPartitionSpec.partition_key_values:type_name -> fluss.PbKeyValue
-	4,  // 17: fluss.ListPartitionInfosRequest.table_path:type_name -> fluss.PbTablePath
-	38, // 18: fluss.ListPartitionInfosRequest.partial_partition_spec:type_name -> fluss.PbPartitionSpec
-	38, // 19: fluss.PbPartitionInfo.partition_spec:type_name -> fluss.PbPartitionSpec
-	40, // 20: fluss.ListPartitionInfosResponse.partitions_info:type_name -> fluss.PbPartitionInfo
-	42, // 21: fluss.ProduceLogRequest.buckets_req:type_name -> fluss.PbProduceLogReqForBucket
-	44, // 22: fluss.ProduceLogResponse.buckets_resp:type_name -> fluss.PbProduceLogRespForBucket
-	46, // 23: fluss.PutKvRequest.buckets_req:type_name -> fluss.PbPutKvReqForBucket
-	48, // 24: fluss.PutKvResponse.buckets_resp:type_name -> fluss.PbPutKvRespForBucket
-	50, // 25: fluss.LookupRequest.buckets_req:type_name -> fluss.PbLookupReqForBucket
-	52, // 26: fluss.PbLookupRespForBucket.values:type_name -> fluss.PbValue
-	53, // 27: fluss.LookupResponse.buckets_resp:type_name -> fluss.PbLookupRespForBucket
-	55, // 28: fluss.PrefixLookupRequest.buckets_req:type_name -> fluss.PbPrefixLookupReqForBucket
-	57, // 29: fluss.PbPrefixLookupRespForBucket.value_lists:type_name -> fluss.PbValueList
-	58, // 30: fluss.PrefixLookupResponse.buckets_resp:type_name -> fluss.PbPrefixLookupRespForBucket
-	60, // 31: fluss.PbFetchLogReqForTable.buckets_req:type_name -> fluss.PbFetchLogReqForBucket
-	61, // 32: fluss.FetchLogRequest.tables_req:type_name -> fluss.PbFetchLogReqForTable
-	63, // 33: fluss.PbFetchLogRespForBucket.remote_log_fetch_info:type_name -> fluss.PbRemoteLogFetchInfo
-	64, // 34: fluss.PbFetchLogRespForTable.buckets_resp:type_name -> fluss.PbFetchLogRespForBucket
-	65, // 35: fluss.FetchLogResponse.tables_resp:type_name -> fluss.PbFetchLogRespForTable
-	69, // 36: fluss.ScanKvRequest.bucket_scan_req:type_name -> fluss.PbScanReqForBucket
-	4,  // 37: fluss.InitWriterRequest.table_path:type_name -> fluss.PbTablePath
+	4,  // 0: fluss.ApiVersionsResponse.api_versions:type_name -> fluss.PbApiVersion
+	6,  // 1: fluss.PbTableMetadata.table_path:type_name -> fluss.PbTablePath
+	9,  // 2: fluss.PbTableMetadata.bucket_metadata:type_name -> fluss.PbBucketMetadata
+	9,  // 3: fluss.PbPartitionMetadata.bucket_metadata:type_name -> fluss.PbBucketMetadata
+	6,  // 4: fluss.MetadataRequest.table_path:type_name -> fluss.PbTablePath
+	7,  // 5: fluss.MetadataRequest.partitions_path:type_name -> fluss.PbPhysicalTablePath
+	8,  // 6: fluss.MetadataResponse.coordinator_server:type_name -> fluss.PbServerNode
+	8,  // 7: fluss.MetadataResponse.tablet_servers:type_name -> fluss.PbServerNode
+	10, // 8: fluss.MetadataResponse.table_metadata:type_name -> fluss.PbTableMetadata
+	11, // 9: fluss.MetadataResponse.partition_metadata:type_name -> fluss.PbPartitionMetadata
+	6,  // 10: fluss.GetTableSchemaRequest.table_path:type_name -> fluss.PbTablePath
+	24, // 11: fluss.ListDatabasesResponse.database_summary:type_name -> fluss.PbDatabaseSummary
+	6,  // 12: fluss.CreateTableRequest.table_path:type_name -> fluss.PbTablePath
+	6,  // 13: fluss.DropTableRequest.table_path:type_name -> fluss.PbTablePath
+	6,  // 14: fluss.GetTableInfoRequest.table_path:type_name -> fluss.PbTablePath
+	6,  // 15: fluss.TableExistsRequest.table_path:type_name -> fluss.PbTablePath
+	39, // 16: fluss.PbPartitionSpec.partition_key_values:type_name -> fluss.PbKeyValue
+	6,  // 17: fluss.ListPartitionInfosRequest.table_path:type_name -> fluss.PbTablePath
+	40, // 18: fluss.ListPartitionInfosRequest.partial_partition_spec:type_name -> fluss.PbPartitionSpec
+	40, // 19: fluss.PbPartitionInfo.partition_spec:type_name -> fluss.PbPartitionSpec
+	42, // 20: fluss.ListPartitionInfosResponse.partitions_info:type_name -> fluss.PbPartitionInfo
+	44, // 21: fluss.ProduceLogRequest.buckets_req:type_name -> fluss.PbProduceLogReqForBucket
+	46, // 22: fluss.ProduceLogResponse.buckets_resp:type_name -> fluss.PbProduceLogRespForBucket
+	48, // 23: fluss.PutKvRequest.buckets_req:type_name -> fluss.PbPutKvReqForBucket
+	50, // 24: fluss.PutKvResponse.buckets_resp:type_name -> fluss.PbPutKvRespForBucket
+	52, // 25: fluss.LookupRequest.buckets_req:type_name -> fluss.PbLookupReqForBucket
+	54, // 26: fluss.PbLookupRespForBucket.values:type_name -> fluss.PbValue
+	55, // 27: fluss.LookupResponse.buckets_resp:type_name -> fluss.PbLookupRespForBucket
+	57, // 28: fluss.PrefixLookupRequest.buckets_req:type_name -> fluss.PbPrefixLookupReqForBucket
+	59, // 29: fluss.PbPrefixLookupRespForBucket.value_lists:type_name -> fluss.PbValueList
+	60, // 30: fluss.PrefixLookupResponse.buckets_resp:type_name -> fluss.PbPrefixLookupRespForBucket
+	62, // 31: fluss.PbFetchLogReqForTable.buckets_req:type_name -> fluss.PbFetchLogReqForBucket
+	63, // 32: fluss.FetchLogRequest.tables_req:type_name -> fluss.PbFetchLogReqForTable
+	65, // 33: fluss.PbFetchLogRespForBucket.remote_log_fetch_info:type_name -> fluss.PbRemoteLogFetchInfo
+	66, // 34: fluss.PbFetchLogRespForTable.buckets_resp:type_name -> fluss.PbFetchLogRespForBucket
+	67, // 35: fluss.FetchLogResponse.tables_resp:type_name -> fluss.PbFetchLogRespForTable
+	71, // 36: fluss.ScanKvRequest.bucket_scan_req:type_name -> fluss.PbScanReqForBucket
+	6,  // 37: fluss.InitWriterRequest.table_path:type_name -> fluss.PbTablePath
 	38, // [38:38] is the sub-list for method output_type
 	38, // [38:38] is the sub-list for method input_type
 	38, // [38:38] is the sub-list for extension type_name
@@ -4841,13 +5058,14 @@ func file_fluss_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_fluss_proto_rawDesc), len(file_fluss_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      2,
 			NumMessages:   76,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_fluss_proto_goTypes,
 		DependencyIndexes: file_fluss_proto_depIdxs,
+		EnumInfos:         file_fluss_proto_enumTypes,
 		MessageInfos:      file_fluss_proto_msgTypes,
 	}.Build()
 	File_fluss_proto = out.File

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/chiqors/fluss-go-client/internal/metadata"
 	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
-	"github.com/chiqors/fluss-go-client/metadata"
-	"github.com/chiqors/fluss-go-client/protocol"
+	"github.com/chiqors/fluss-go-client/internal/protocol"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -49,7 +49,7 @@ func (t *TableClient) AppendLog(ctx context.Context, acks int32, timeoutMs int32
 	}
 	var out []ProduceResult
 	for addr, batchList := range grouped {
-		resp, err := t.client.rpc.Invoke(ctx, addr, protocol.ProduceLog, "ProduceLogRequest", "ProduceLogResponse", func(m proto.Message) error {
+		resp, err := t.client.rpc.Invoke(ctx, addr, flusspb.ApiKey_ProduceLog, "ProduceLogRequest", "ProduceLogResponse", func(m proto.Message) error {
 			req, ok := m.(*flusspb.ProduceLogRequest)
 			if !ok {
 				return fmt.Errorf("fluss: unexpected produce log request type %T", m)
@@ -86,7 +86,7 @@ func (t *TableClient) UpsertKV(ctx context.Context, acks int32, timeoutMs int32,
 	}
 	var out []PutResult
 	for addr, batchList := range grouped {
-		resp, err := t.client.rpc.Invoke(ctx, addr, protocol.PutKV, "PutKvRequest", "PutKvResponse", func(m proto.Message) error {
+		resp, err := t.client.rpc.Invoke(ctx, addr, flusspb.ApiKey_PutKV, "PutKvRequest", "PutKvResponse", func(m proto.Message) error {
 			req, ok := m.(*flusspb.PutKvRequest)
 			if !ok {
 				return fmt.Errorf("fluss: unexpected put kv request type %T", m)
@@ -116,7 +116,7 @@ func (t *TableClient) UpsertKV(ctx context.Context, acks int32, timeoutMs int32,
 }
 
 func (t *TableClient) Lookup(ctx context.Context, reqs []LookupBucketRequest, insertIfNotExists *bool, acks *int32, timeoutMs *int32) ([]LookupBucketValues, error) {
-	return t.lookupCommon(ctx, protocol.Lookup, "LookupRequest", "LookupResponse", reqs, insertIfNotExists, acks, timeoutMs)
+	return t.lookupCommon(ctx, flusspb.ApiKey_Lookup, "LookupRequest", "LookupResponse", reqs, insertIfNotExists, acks, timeoutMs)
 }
 
 func (t *TableClient) PrefixLookup(ctx context.Context, reqs []LookupBucketRequest) ([]PrefixLookupBucketValues, error) {
@@ -130,7 +130,7 @@ func (t *TableClient) PrefixLookup(ctx context.Context, reqs []LookupBucketReque
 	}
 	var out []PrefixLookupBucketValues
 	for addr, items := range grouped {
-		resp, err := t.client.rpc.Invoke(ctx, addr, protocol.PrefixLookup, "PrefixLookupRequest", "PrefixLookupResponse", func(m proto.Message) error {
+		resp, err := t.client.rpc.Invoke(ctx, addr, flusspb.ApiKey_PrefixLookup, "PrefixLookupRequest", "PrefixLookupResponse", func(m proto.Message) error {
 			req, ok := m.(*flusspb.PrefixLookupRequest)
 			if !ok {
 				return fmt.Errorf("fluss: unexpected prefix lookup request type %T", m)
@@ -164,7 +164,7 @@ func (t *TableClient) FetchLog(ctx context.Context, followerServerID int32, maxB
 	}
 	var out []FetchedBucket
 	for addr, items := range grouped {
-		resp, err := t.client.rpc.Invoke(ctx, addr, protocol.FetchLog, "FetchLogRequest", "FetchLogResponse", func(m proto.Message) error {
+		resp, err := t.client.rpc.Invoke(ctx, addr, flusspb.ApiKey_FetchLog, "FetchLogRequest", "FetchLogResponse", func(m proto.Message) error {
 			req, ok := m.(*flusspb.FetchLogRequest)
 			if !ok {
 				return fmt.Errorf("fluss: unexpected fetch log request type %T", m)
@@ -208,7 +208,7 @@ func (t *TableClient) LimitScan(ctx context.Context, partitionID *int64, bucketI
 	if err != nil {
 		return LimitScanResult{}, err
 	}
-	resp, err := t.client.rpc.Invoke(ctx, node.Address(), protocol.LimitScan, "LimitScanRequest", "LimitScanResponse", func(m proto.Message) error {
+	resp, err := t.client.rpc.Invoke(ctx, node.Address(), flusspb.ApiKey_LimitScan, "LimitScanRequest", "LimitScanResponse", func(m proto.Message) error {
 		req, ok := m.(*flusspb.LimitScanRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected limit scan request type %T", m)
@@ -308,7 +308,7 @@ func (t *TableClient) ensureTableInfo(ctx context.Context) (TableInfo, error) {
 	return t.Info(ctx)
 }
 
-func (t *TableClient) lookupCommon(ctx context.Context, api protocol.APIKey, reqName, respName string, reqs []LookupBucketRequest, insertIfNotExists *bool, acks *int32, timeoutMs *int32) ([]LookupBucketValues, error) {
+func (t *TableClient) lookupCommon(ctx context.Context, api flusspb.ApiKey, reqName, respName string, reqs []LookupBucketRequest, insertIfNotExists *bool, acks *int32, timeoutMs *int32) ([]LookupBucketValues, error) {
 	tableInfo, err := t.ensureTableInfo(ctx)
 	if err != nil {
 		return nil, err

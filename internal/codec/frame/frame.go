@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/chiqors/fluss-go-client/protocol"
+	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
 )
 
 const (
@@ -15,14 +15,14 @@ const (
 )
 
 type RequestFrame struct {
-	APIKey     protocol.APIKey
+	APIKey     flusspb.ApiKey
 	APIVersion int16
 	RequestID  int32
 	Payload    []byte
 }
 
 type ResponseFrame struct {
-	Type      protocol.ResponseType
+	Type      flusspb.ResponseType
 	RequestID int32
 	Payload   []byte
 }
@@ -51,15 +51,15 @@ func ReadResponse(r io.Reader) (ResponseFrame, error) {
 	if _, err := io.ReadFull(r, body); err != nil {
 		return ResponseFrame{}, err
 	}
-	frame := ResponseFrame{Type: protocol.ResponseType(body[0])}
+	frame := ResponseFrame{Type: flusspb.ResponseType(body[0])}
 	switch frame.Type {
-	case protocol.ResponseSuccess, protocol.ResponseError:
+	case flusspb.ResponseType_ResponseSuccess, flusspb.ResponseType_ResponseError:
 		if size < ResponseHeaderLength {
 			return ResponseFrame{}, fmt.Errorf("response too short: %d", size)
 		}
 		frame.RequestID = int32(binary.BigEndian.Uint32(body[1:5]))
 		frame.Payload = body[5:]
-	case protocol.ResponseFailure:
+	case flusspb.ResponseType_ResponseFailure:
 		frame.Payload = body[1:]
 	default:
 		return ResponseFrame{}, fmt.Errorf("unknown response type %d", frame.Type)

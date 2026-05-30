@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
-	"github.com/chiqors/fluss-go-client/protocol"
+	"github.com/chiqors/fluss-go-client/internal/protocol"
 	"google.golang.org/protobuf/proto"
 )
 

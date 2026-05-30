@@ -3,8 +3,8 @@ package client
 import (
 	"fmt"
 
+	"github.com/chiqors/fluss-go-client/internal/metadata"
 	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
-	"github.com/chiqors/fluss-go-client/metadata"
 	"google.golang.org/protobuf/proto"
 )
 

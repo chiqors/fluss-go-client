@@ -9,11 +9,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chiqors/fluss-go-client/auth"
-	"github.com/chiqors/fluss-go-client/codec"
+	"github.com/chiqors/fluss-go-client/internal/auth"
+	"github.com/chiqors/fluss-go-client/internal/codec/frame"
 	iproto "github.com/chiqors/fluss-go-client/internal/proto"
 	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
-	"github.com/chiqors/fluss-go-client/protocol"
+	"github.com/chiqors/fluss-go-client/internal/protocol"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
@@ -53,7 +53,7 @@ type connection struct {
 	conn     net.Conn
 	writeMu  sync.Mutex
 	pending  sync.Map
-	versions map[protocol.APIKey]int16
+	versions map[flusspb.ApiKey]int16
 	closed   chan struct{}
 }
 
@@ -74,7 +74,7 @@ func (c *Client) Close() error {
 	return err
 }
 
-func (c *Client) Invoke(ctx context.Context, addr string, apiKey protocol.APIKey, reqName, respName string, build func(proto.Message) error) (protoreflect.ProtoMessage, error) {
+func (c *Client) Invoke(ctx context.Context, addr string, apiKey flusspb.ApiKey, reqName, respName string, build func(proto.Message) error) (protoreflect.ProtoMessage, error) {
 	conn, err := c.getConn(ctx, addr)
 	if err != nil {
 		return nil, err
@@ -109,7 +109,7 @@ func (c *Client) getConn(ctx context.Context, addr string) (*connection, error) 
 		addr:     addr,
 		cfg:      c.cfg,
 		conn:     rawConn,
-		versions: map[protocol.APIKey]int16{},
+		versions: map[flusspb.ApiKey]int16{},
 		closed:   make(chan struct{}),
 	}
 	go conn.readLoop()
@@ -126,7 +126,7 @@ func (c *Client) getConn(ctx context.Context, addr string) (*connection, error) 
 }
 
 func (c *connection) negotiate(ctx context.Context) error {
-	msg, err := c.invoke(ctx, protocol.APIVersions, &flusspb.ApiVersionsRequest{
+	msg, err := c.invoke(ctx, flusspb.ApiKey_APIVersions, &flusspb.ApiVersionsRequest{
 		ClientSoftwareName:    proto.String(c.cfg.ClientSoftwareName),
 		ClientSoftwareVersion: proto.String(c.cfg.ClientSoftwareVersion),
 	}, "ApiVersionsResponse", c.nextRequestID())
@@ -135,7 +135,7 @@ func (c *connection) negotiate(ctx context.Context) error {
 	}
 	resp := msg.(*flusspb.ApiVersionsResponse)
 	for _, item := range resp.GetApiVersions() {
-		c.versions[protocol.APIKey(item.GetApiKey())] = int16(item.GetMaxVersion())
+		c.versions[flusspb.ApiKey(item.GetApiKey())] = int16(item.GetMaxVersion())
 	}
 	return nil
 }
@@ -149,7 +149,7 @@ func (c *connection) authenticate(ctx context.Context) error {
 		return err
 	}
 	for {
-		msg, err := c.invoke(ctx, protocol.Authenticate, &flusspb.AuthenticateRequest{
+		msg, err := c.invoke(ctx, flusspb.ApiKey_Authenticate, &flusspb.AuthenticateRequest{
 			Protocol: proto.String(c.cfg.Authenticator.Protocol()),
 			Token:    token,
 		}, "AuthenticateResponse", c.nextRequestID())
@@ -175,7 +175,7 @@ func (c *connection) nextRequestID() int32 {
 	return int32(time.Now().UnixNano() & 0x7fffffff)
 }
 
-func (c *connection) invoke(ctx context.Context, apiKey protocol.APIKey, req protoreflect.ProtoMessage, respName string, reqID int32) (protoreflect.ProtoMessage, error) {
+func (c *connection) invoke(ctx context.Context, apiKey flusspb.ApiKey, req protoreflect.ProtoMessage, respName string, reqID int32) (protoreflect.ProtoMessage, error) {
 	version := c.versions[apiKey]
 	payload, err := proto.Marshal(req)
 	if err != nil {
@@ -224,9 +224,9 @@ func (c *connection) readLoop() {
 			return
 		}
 		switch frame.Type {
-		case protocol.ResponseSuccess:
+		case flusspb.ResponseType_ResponseSuccess:
 			c.resolve(frame.RequestID, frame.Payload, "")
-		case protocol.ResponseError, protocol.ResponseFailure:
+		case flusspb.ResponseType_ResponseError, flusspb.ResponseType_ResponseFailure:
 			c.resolveError(frame.RequestID, frame.Payload)
 		}
 	}

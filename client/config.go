@@ -4,7 +4,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/chiqors/fluss-go-client/auth"
+	"github.com/chiqors/fluss-go-client/internal/auth"
 )
 
 type Config struct {

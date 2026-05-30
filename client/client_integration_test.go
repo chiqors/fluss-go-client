@@ -11,7 +11,6 @@ import (
 	"time"
 
 	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
-	"github.com/chiqors/fluss-go-client/protocol"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -20,7 +19,7 @@ type mockFlussServer struct {
 	ln       net.Listener
 	addr     string
 	mu       sync.Mutex
-	handlers map[protocol.APIKey]func(int32, []byte) ([]byte, error)
+	handlers map[flusspb.ApiKey]func(int32, []byte) ([]byte, error)
 }
 
 func newMockFlussServer(t *testing.T) *mockFlussServer {
@@ -33,7 +32,7 @@ func newMockFlussServer(t *testing.T) *mockFlussServer {
 		t:        t,
 		ln:       ln,
 		addr:     ln.Addr().String(),
-		handlers: map[protocol.APIKey]func(int32, []byte) ([]byte, error){},
+		handlers: map[flusspb.ApiKey]func(int32, []byte) ([]byte, error){},
 	}
 	go s.serve()
 	return s
@@ -43,7 +42,7 @@ func (s *mockFlussServer) Close() {
 	_ = s.ln.Close()
 }
 
-func (s *mockFlussServer) on(api protocol.APIKey, fn func(int32, []byte) ([]byte, error)) {
+func (s *mockFlussServer) on(api flusspb.ApiKey, fn func(int32, []byte) ([]byte, error)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.handlers[api] = fn
@@ -85,7 +84,7 @@ func (s *mockFlussServer) handleConn(conn net.Conn) {
 	}
 }
 
-func readRequest(r io.Reader) (protocol.APIKey, int32, []byte, error) {
+func readRequest(r io.Reader) (flusspb.ApiKey, int32, []byte, error) {
 	var sizeBuf [4]byte
 	if _, err := io.ReadFull(r, sizeBuf[:]); err != nil {
 		return 0, 0, nil, err
@@ -95,7 +94,7 @@ func readRequest(r io.Reader) (protocol.APIKey, int32, []byte, error) {
 	if _, err := io.ReadFull(r, body); err != nil {
 		return 0, 0, nil, err
 	}
-	apiKey := protocol.APIKey(int16(binary.BigEndian.Uint16(body[0:2])))
+	apiKey := flusspb.ApiKey(binary.BigEndian.Uint16(body[0:2]))
 	reqID := int32(binary.BigEndian.Uint32(body[4:8]))
 	return apiKey, reqID, body[8:], nil
 }
@@ -104,7 +103,7 @@ func encodeSuccessResponse(reqID int32, payload []byte) []byte {
 	frameLen := 5 + len(payload)
 	buf := make([]byte, 4+frameLen)
 	binary.BigEndian.PutUint32(buf[0:4], uint32(frameLen))
-	buf[4] = byte(protocol.ResponseSuccess)
+	buf[4] = byte(flusspb.ResponseType_ResponseSuccess)
 	binary.BigEndian.PutUint32(buf[5:9], uint32(reqID))
 	copy(buf[9:], payload)
 	return buf
@@ -122,7 +121,7 @@ func encodeErrorResponse(reqID int32, code int32, message string) []byte {
 	frameLen := 5 + len(payload)
 	buf := make([]byte, 4+frameLen)
 	binary.BigEndian.PutUint32(buf[0:4], uint32(frameLen))
-	buf[4] = byte(protocol.ResponseError)
+	buf[4] = byte(flusspb.ResponseType_ResponseError)
 	binary.BigEndian.PutUint32(buf[5:9], uint32(reqID))
 	copy(buf[9:], payload)
 	return buf
@@ -137,7 +136,7 @@ func mustMarshal(t *testing.T, msg proto.Message) []byte {
 	return payload
 }
 
-func apiVersionsResponse(apis ...protocol.APIKey) *flusspb.ApiVersionsResponse {
+func apiVersionsResponse(apis ...flusspb.ApiKey) *flusspb.ApiVersionsResponse {
 	resp := &flusspb.ApiVersionsResponse{}
 	for _, api := range apis {
 		resp.ApiVersions = append(resp.ApiVersions, &flusspb.PbApiVersion{
@@ -200,24 +199,24 @@ func TestDialAndAdminFlow(t *testing.T) {
 		t.Fatalf("parse port: %v", err)
 	}
 
-	srv.on(protocol.APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
 		return mustMarshal(t, apiVersionsResponse(
-			protocol.APIVersions,
-			protocol.GetMetadata,
-			protocol.ListDatabases,
-			protocol.DatabaseExists,
-			protocol.GetTableInfo,
-			protocol.GetTableSchema,
-			protocol.ListTables,
-			protocol.TableExists,
-			protocol.ListPartitionInfos,
-			protocol.LimitScan,
+			flusspb.ApiKey_APIVersions,
+			flusspb.ApiKey_GetMetadata,
+			flusspb.ApiKey_ListDatabases,
+			flusspb.ApiKey_DatabaseExists,
+			flusspb.ApiKey_GetTableInfo,
+			flusspb.ApiKey_GetTableSchema,
+			flusspb.ApiKey_ListTables,
+			flusspb.ApiKey_TableExists,
+			flusspb.ApiKey_ListPartitionInfos,
+			flusspb.ApiKey_LimitScan,
 		)), nil
 	})
 
-	srv.on(protocol.GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
 		resp := metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "events"}, 10, 3)
@@ -227,7 +226,7 @@ func TestDialAndAdminFlow(t *testing.T) {
 		return mustMarshal(t, resp), nil
 	})
 
-	srv.on(protocol.ListDatabases, func(reqID int32, payload []byte) ([]byte, error) {
+	srv.on(flusspb.ApiKey_ListDatabases, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
 		return mustMarshal(t, &flusspb.ListDatabasesResponse{
@@ -240,7 +239,7 @@ func TestDialAndAdminFlow(t *testing.T) {
 		}), nil
 	})
 
-	srv.on(protocol.DatabaseExists, func(reqID int32, payload []byte) ([]byte, error) {
+	srv.on(flusspb.ApiKey_DatabaseExists, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		req := &flusspb.DatabaseExistsRequest{}
 		if err := proto.Unmarshal(payload, req); err != nil {
@@ -251,7 +250,7 @@ func TestDialAndAdminFlow(t *testing.T) {
 		}), nil
 	})
 
-	srv.on(protocol.GetTableInfo, func(reqID int32, payload []byte) ([]byte, error) {
+	srv.on(flusspb.ApiKey_GetTableInfo, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
 		return mustMarshal(t, &flusspb.GetTableInfoResponse{
@@ -263,7 +262,7 @@ func TestDialAndAdminFlow(t *testing.T) {
 		}), nil
 	})
 
-	srv.on(protocol.GetTableSchema, func(reqID int32, payload []byte) ([]byte, error) {
+	srv.on(flusspb.ApiKey_GetTableSchema, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
 		return mustMarshal(t, &flusspb.GetTableSchemaResponse{
@@ -272,7 +271,7 @@ func TestDialAndAdminFlow(t *testing.T) {
 		}), nil
 	})
 
-	srv.on(protocol.LimitScan, func(reqID int32, payload []byte) ([]byte, error) {
+	srv.on(flusspb.ApiKey_LimitScan, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		req := &flusspb.LimitScanRequest{}
 		if err := proto.Unmarshal(payload, req); err != nil {
@@ -353,20 +352,20 @@ func TestKVScannerLifecycle(t *testing.T) {
 		t.Fatalf("parse port: %v", err)
 	}
 
-	srv.on(protocol.APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
-		return mustMarshal(t, apiVersionsResponse(protocol.APIVersions, protocol.GetMetadata, protocol.ScanKV)), nil
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata, flusspb.ApiKey_ScanKV)), nil
 	})
 
-	srv.on(protocol.GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
 		return mustMarshal(t, metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "kv"}, 11, 1)), nil
 	})
 
 	callCount := 0
-	srv.on(protocol.ScanKV, func(reqID int32, payload []byte) ([]byte, error) {
+	srv.on(flusspb.ApiKey_ScanKV, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		req := &flusspb.ScanKvRequest{}
 		if err := proto.Unmarshal(payload, req); err != nil {
@@ -440,19 +439,19 @@ func TestAppendWriterLifecycleAndDefaults(t *testing.T) {
 		t.Fatalf("parse port: %v", err)
 	}
 
-	srv.on(protocol.APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
-		return mustMarshal(t, apiVersionsResponse(protocol.APIVersions, protocol.GetMetadata, protocol.ProduceLog)), nil
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata, flusspb.ApiKey_ProduceLog)), nil
 	})
 
-	srv.on(protocol.GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
 		return mustMarshal(t, metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "logs"}, 21, 2)), nil
 	})
 
-	srv.on(protocol.ProduceLog, func(reqID int32, payload []byte) ([]byte, error) {
+	srv.on(flusspb.ApiKey_ProduceLog, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		req := &flusspb.ProduceLogRequest{}
 		if err := proto.Unmarshal(payload, req); err != nil {
@@ -514,20 +513,20 @@ func TestUpsertWriterLifecycleAndOptions(t *testing.T) {
 		t.Fatalf("parse port: %v", err)
 	}
 
-	srv.on(protocol.APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
+	srv.on(flusspb.ApiKey_APIVersions, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
-		return mustMarshal(t, apiVersionsResponse(protocol.APIVersions, protocol.GetMetadata, protocol.PutKV)), nil
+		return mustMarshal(t, apiVersionsResponse(flusspb.ApiKey_APIVersions, flusspb.ApiKey_GetMetadata, flusspb.ApiKey_PutKV)), nil
 	})
 
-	srv.on(protocol.GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
+	srv.on(flusspb.ApiKey_GetMetadata, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		_ = payload
 		return mustMarshal(t, metadataResponseForSingleBucket(host, int32(port), TablePath{DatabaseName: "demo", TableName: "kv"}, 31, 5)), nil
 	})
 
 	aggMode := int32(2)
-	srv.on(protocol.PutKV, func(reqID int32, payload []byte) ([]byte, error) {
+	srv.on(flusspb.ApiKey_PutKV, func(reqID int32, payload []byte) ([]byte, error) {
 		_ = reqID
 		req := &flusspb.PutKvRequest{}
 		if err := proto.Unmarshal(payload, req); err != nil {

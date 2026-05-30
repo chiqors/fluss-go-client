@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/chiqors/fluss-go-client/client"
-	"github.com/chiqors/fluss-go-client/data"
+	rowcodec "github.com/chiqors/fluss-go-client/internal/codec/row"
 )
 
 func main() {
@@ -71,14 +71,14 @@ func main() {
 		fmt.Printf("Table %s.%s: ID=%d SchemaID=%d\n", path.DatabaseName, path.TableName, info.ID, schema.SchemaID)
 	}
 
-	logSchema := data.NewSchema(data.Int64Type(), data.Int32Type(), data.Float64Type(), data.StringType())
+	logSchema := rowcodec.NewSchema(rowcodec.Int64Type(), rowcodec.Int32Type(), rowcodec.Float64Type(), rowcodec.StringType())
 	logFields := []string{"order_id", "customer_id", "amount", "status"}
-	logRows := []data.Row{}
+	logRows := []rowcodec.Row{}
 	for _, values := range [][]any{
 		{int64(1001), int32(42), 19.95, "created"},
 		{int64(1002), int32(43), 29.50, "confirmed"},
 	} {
-		row, err := data.NewRow(logSchema, values...)
+		row, err := rowcodec.NewRow(logSchema, values...)
 		if err != nil {
 			fatalf("build log row: %v", err)
 		}
@@ -95,13 +95,13 @@ func main() {
 		fmt.Printf("AppendLog[%d]: bucket=%d base_offset=%d\n", i, appendResult[0].BucketID, appendResult[0].BaseOffset)
 	}
 
-	kvSchema := data.NewSchema(data.Int64Type(), data.StringType(), data.StringType())
-	kvRows := []data.Row{}
+	kvSchema := rowcodec.NewSchema(rowcodec.Int64Type(), rowcodec.StringType(), rowcodec.StringType())
+	kvRows := []rowcodec.Row{}
 	for _, values := range [][]any{
 		{int64(42), "Ada Lovelace", "gold"},
 		{int64(43), "Grace Hopper", "platinum"},
 	} {
-		row, err := data.NewRow(kvSchema, values...)
+		row, err := rowcodec.NewRow(kvSchema, values...)
 		if err != nil {
 			fatalf("build kv row: %v", err)
 		}
@@ -125,7 +125,7 @@ func main() {
 	}
 	fmt.Printf("LimitScan IsLogTable=%v Records=%d bytes\n", limitResult.IsLogTable, len(limitResult.Records))
 
-	decodedLogs, err := data.DecodeLogRecordBatchRows(logSchema, limitResult.Records)
+	decodedLogs, err := rowcodec.DecodeLogRecordBatchRows(logSchema, limitResult.Records)
 	if err != nil {
 		fatalf("decode log scan: %v", err)
 	}

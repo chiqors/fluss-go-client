@@ -5,10 +5,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/chiqors/fluss-go-client/internal/metadata"
 	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
-	"github.com/chiqors/fluss-go-client/metadata"
-	"github.com/chiqors/fluss-go-client/protocol"
-	"github.com/chiqors/fluss-go-client/rpc"
+	"github.com/chiqors/fluss-go-client/internal/transport"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -60,7 +59,7 @@ func (c *Client) RefreshMetadata(ctx context.Context, tablePaths []TablePath, pa
 	if coordinator, ok := c.metadata.Coordinator(); ok {
 		addr = coordinator.Address()
 	}
-	msg, err := c.rpc.Invoke(ctx, addr, protocol.GetMetadata, "MetadataRequest", "MetadataResponse", func(m proto.Message) error {
+	msg, err := c.rpc.Invoke(ctx, addr, flusspb.ApiKey_GetMetadata, "MetadataRequest", "MetadataResponse", func(m proto.Message) error {
 		req, ok := m.(*flusspb.MetadataRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected metadata request type %T", m)

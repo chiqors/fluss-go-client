@@ -3,7 +3,7 @@ package client
 import (
 	"errors"
 
-	"github.com/chiqors/fluss-go-client/metadata"
+	"github.com/chiqors/fluss-go-client/internal/metadata"
 )
 
 var ErrClosed = errors.New("fluss: resource is closed")

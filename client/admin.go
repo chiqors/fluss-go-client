@@ -4,9 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/chiqors/fluss-go-client/internal/metadata"
 	flusspb "github.com/chiqors/fluss-go-client/internal/proto/gen/fluss"
-	"github.com/chiqors/fluss-go-client/metadata"
-	"github.com/chiqors/fluss-go-client/protocol"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -15,7 +14,7 @@ type AdminClient struct {
 }
 
 func (a *AdminClient) ListDatabases(ctx context.Context, includeSummary bool) ([]string, []DatabaseSummary, error) {
-	resp, err := a.invokeAny(ctx, protocol.ListDatabases, "ListDatabasesRequest", "ListDatabasesResponse", func(msg proto.Message) error {
+	resp, err := a.invokeAny(ctx, flusspb.ApiKey_ListDatabases, "ListDatabasesRequest", "ListDatabasesResponse", func(msg proto.Message) error {
 		req, ok := msg.(*flusspb.ListDatabasesRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected list databases request type %T", msg)
@@ -43,7 +42,7 @@ func (a *AdminClient) ListDatabases(ctx context.Context, includeSummary bool) ([
 }
 
 func (a *AdminClient) DatabaseExists(ctx context.Context, name string) (bool, error) {
-	resp, err := a.invokeAny(ctx, protocol.DatabaseExists, "DatabaseExistsRequest", "DatabaseExistsResponse", func(msg proto.Message) error {
+	resp, err := a.invokeAny(ctx, flusspb.ApiKey_DatabaseExists, "DatabaseExistsRequest", "DatabaseExistsResponse", func(msg proto.Message) error {
 		req, ok := msg.(*flusspb.DatabaseExistsRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected database exists request type %T", msg)
@@ -62,7 +61,7 @@ func (a *AdminClient) DatabaseExists(ctx context.Context, name string) (bool, er
 }
 
 func (a *AdminClient) CreateDatabase(ctx context.Context, name string, databaseJSON []byte, ignoreIfExists bool) error {
-	_, err := a.invokeCoordinator(ctx, protocol.CreateDatabase, "CreateDatabaseRequest", "CreateDatabaseResponse", func(msg proto.Message) error {
+	_, err := a.invokeCoordinator(ctx, flusspb.ApiKey_CreateDatabase, "CreateDatabaseRequest", "CreateDatabaseResponse", func(msg proto.Message) error {
 		req, ok := msg.(*flusspb.CreateDatabaseRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected create database request type %T", msg)
@@ -78,7 +77,7 @@ func (a *AdminClient) CreateDatabase(ctx context.Context, name string, databaseJ
 }
 
 func (a *AdminClient) DropDatabase(ctx context.Context, name string, ignoreIfNotExists, cascade bool) error {
-	_, err := a.invokeCoordinator(ctx, protocol.DropDatabase, "DropDatabaseRequest", "DropDatabaseResponse", func(msg proto.Message) error {
+	_, err := a.invokeCoordinator(ctx, flusspb.ApiKey_DropDatabase, "DropDatabaseRequest", "DropDatabaseResponse", func(msg proto.Message) error {
 		req, ok := msg.(*flusspb.DropDatabaseRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected drop database request type %T", msg)
@@ -92,7 +91,7 @@ func (a *AdminClient) DropDatabase(ctx context.Context, name string, ignoreIfNot
 }
 
 func (a *AdminClient) GetDatabaseInfo(ctx context.Context, name string) (DatabaseInfo, error) {
-	resp, err := a.invokeAny(ctx, protocol.GetDatabaseInfo, "GetDatabaseInfoRequest", "GetDatabaseInfoResponse", func(msg proto.Message) error {
+	resp, err := a.invokeAny(ctx, flusspb.ApiKey_GetDatabaseInfo, "GetDatabaseInfoRequest", "GetDatabaseInfoResponse", func(msg proto.Message) error {
 		req, ok := msg.(*flusspb.GetDatabaseInfoRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected get database info request type %T", msg)
@@ -115,7 +114,7 @@ func (a *AdminClient) GetDatabaseInfo(ctx context.Context, name string) (Databas
 }
 
 func (a *AdminClient) ListTables(ctx context.Context, database string) ([]string, error) {
-	resp, err := a.invokeAny(ctx, protocol.ListTables, "ListTablesRequest", "ListTablesResponse", func(msg proto.Message) error {
+	resp, err := a.invokeAny(ctx, flusspb.ApiKey_ListTables, "ListTablesRequest", "ListTablesResponse", func(msg proto.Message) error {
 		req, ok := msg.(*flusspb.ListTablesRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected list tables request type %T", msg)
@@ -134,7 +133,7 @@ func (a *AdminClient) ListTables(ctx context.Context, database string) ([]string
 }
 
 func (a *AdminClient) TableExists(ctx context.Context, path TablePath) (bool, error) {
-	resp, err := a.invokeAny(ctx, protocol.TableExists, "TableExistsRequest", "TableExistsResponse", func(msg proto.Message) error {
+	resp, err := a.invokeAny(ctx, flusspb.ApiKey_TableExists, "TableExistsRequest", "TableExistsResponse", func(msg proto.Message) error {
 		req, ok := msg.(*flusspb.TableExistsRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected table exists request type %T", msg)
@@ -153,7 +152,7 @@ func (a *AdminClient) TableExists(ctx context.Context, path TablePath) (bool, er
 }
 
 func (a *AdminClient) CreateTable(ctx context.Context, path TablePath, tableJSON []byte, ignoreIfExists bool) error {
-	_, err := a.invokeCoordinator(ctx, protocol.CreateTable, "CreateTableRequest", "CreateTableResponse", func(msg proto.Message) error {
+	_, err := a.invokeCoordinator(ctx, flusspb.ApiKey_CreateTable, "CreateTableRequest", "CreateTableResponse", func(msg proto.Message) error {
 		req, ok := msg.(*flusspb.CreateTableRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected create table request type %T", msg)
@@ -167,7 +166,7 @@ func (a *AdminClient) CreateTable(ctx context.Context, path TablePath, tableJSON
 }
 
 func (a *AdminClient) DropTable(ctx context.Context, path TablePath, ignoreIfNotExists bool) error {
-	_, err := a.invokeCoordinator(ctx, protocol.DropTable, "DropTableRequest", "DropTableResponse", func(msg proto.Message) error {
+	_, err := a.invokeCoordinator(ctx, flusspb.ApiKey_DropTable, "DropTableRequest", "DropTableResponse", func(msg proto.Message) error {
 		req, ok := msg.(*flusspb.DropTableRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected drop table request type %T", msg)
@@ -180,7 +179,7 @@ func (a *AdminClient) DropTable(ctx context.Context, path TablePath, ignoreIfNot
 }
 
 func (a *AdminClient) GetTableInfo(ctx context.Context, path TablePath) (TableInfo, error) {
-	resp, err := a.invokeAny(ctx, protocol.GetTableInfo, "GetTableInfoRequest", "GetTableInfoResponse", func(msg proto.Message) error {
+	resp, err := a.invokeAny(ctx, flusspb.ApiKey_GetTableInfo, "GetTableInfoRequest", "GetTableInfoResponse", func(msg proto.Message) error {
 		req, ok := msg.(*flusspb.GetTableInfoRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected get table info request type %T", msg)
@@ -215,7 +214,7 @@ func (a *AdminClient) GetTableInfo(ctx context.Context, path TablePath) (TableIn
 }
 
 func (a *AdminClient) GetTableSchema(ctx context.Context, path TablePath, schemaID *int32) (SchemaInfo, error) {
-	resp, err := a.invokeAny(ctx, protocol.GetTableSchema, "GetTableSchemaRequest", "GetTableSchemaResponse", func(msg proto.Message) error {
+	resp, err := a.invokeAny(ctx, flusspb.ApiKey_GetTableSchema, "GetTableSchemaRequest", "GetTableSchemaResponse", func(msg proto.Message) error {
 		req, ok := msg.(*flusspb.GetTableSchemaRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected get table schema request type %T", msg)
@@ -240,7 +239,7 @@ func (a *AdminClient) GetTableSchema(ctx context.Context, path TablePath, schema
 }
 
 func (a *AdminClient) ListPartitionInfos(ctx context.Context, path TablePath) ([]PartitionInfo, error) {
-	resp, err := a.invokeAny(ctx, protocol.ListPartitionInfos, "ListPartitionInfosRequest", "ListPartitionInfosResponse", func(msg proto.Message) error {
+	resp, err := a.invokeAny(ctx, flusspb.ApiKey_ListPartitionInfos, "ListPartitionInfosRequest", "ListPartitionInfosResponse", func(msg proto.Message) error {
 		req, ok := msg.(*flusspb.ListPartitionInfosRequest)
 		if !ok {
 			return fmt.Errorf("fluss: unexpected list partition infos request type %T", msg)
@@ -271,7 +270,7 @@ func (a *AdminClient) ListPartitionInfos(ctx context.Context, path TablePath) ([
 	return out, nil
 }
 
-func (a *AdminClient) invokeAny(ctx context.Context, api protocol.APIKey, reqName, respName string, build func(proto.Message) error) (proto.Message, error) {
+func (a *AdminClient) invokeAny(ctx context.Context, api flusspb.ApiKey, reqName, respName string, build func(proto.Message) error) (proto.Message, error) {
 	addr := a.client.endpoints[0]
 	if coordinator, ok := a.client.metadata.Coordinator(); ok {
 		addr = coordinator.Address()
@@ -287,7 +286,7 @@ func (a *AdminClient) invokeAny(ctx context.Context, api protocol.APIKey, reqNam
 	return resp, nil
 }
 
-func (a *AdminClient) invokeCoordinator(ctx context.Context, api protocol.APIKey, reqName, respName string, build func(proto.Message) error) (proto.Message, error) {
+func (a *AdminClient) invokeCoordinator(ctx context.Context, api flusspb.ApiKey, reqName, respName string, build func(proto.Message) error) (proto.Message, error) {
 	if _, ok := a.client.metadata.Coordinator(); !ok {
 		if err := a.client.RefreshMetadata(ctx, nil, nil); err != nil {
 			return nil, err

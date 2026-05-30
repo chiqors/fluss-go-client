@@ -1,4 +1,4 @@
-package data
+package rowcodec
 
 import "fmt"
 
@@ -51,14 +51,14 @@ func (t FieldType) Validate() error {
 		return nil
 	case TypeDecimal:
 		if t.Length <= 0 {
-			return fmt.Errorf("data: decimal precision must be positive")
+			return fmt.Errorf("rowcodec: decimal precision must be positive")
 		}
 		if t.Scale < 0 || t.Scale > t.Length {
-			return fmt.Errorf("data: invalid decimal scale")
+			return fmt.Errorf("rowcodec: invalid decimal scale")
 		}
 		return nil
 	default:
-		return fmt.Errorf("data: unsupported type %q", t.Kind)
+		return fmt.Errorf("rowcodec: unsupported type %q", t.Kind)
 	}
 }
 

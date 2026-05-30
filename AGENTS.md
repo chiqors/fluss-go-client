@@ -43,6 +43,8 @@ Agents should keep these design principles:
 - avoid exposing low-level wire details unless they are intentionally part of the SDK surface
 - avoid overcommitting unstable APIs too early
 - keep protobuf and wire-contract details as an internal implementation concern rather than the public SDK surface
+- keep `client/` as the only public SDK package; everything else that is implementation detail should live under `internal/`
+- treat `demo/` as a harness or smoke-test consumer, not as part of the public SDK surface
 
 ## Current Architecture
 
@@ -255,6 +257,8 @@ Treat it as:
 
 - a proof that the Go client can talk to a real Fluss cluster
 - a place to add stronger E2E flows over time
+
+Demo code may use internal implementation helpers when that keeps the smoke path realistic, but downstream SDK consumers should only depend on `client/` and the public APIs it exposes.
 
 Do not make the demo README misleading. Keep it aligned with what the demo actually verifies today.
 

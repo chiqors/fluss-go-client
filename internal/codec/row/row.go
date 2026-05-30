@@ -1,4 +1,4 @@
-package data
+package rowcodec
 
 import (
 	"bytes"
@@ -38,7 +38,7 @@ type Row struct {
 
 func NewRow(schema Schema, values ...any) (Row, error) {
 	if len(values) != len(schema.Fields) {
-		return Row{}, fmt.Errorf("data: expected %d values, got %d", len(schema.Fields), len(values))
+		return Row{}, fmt.Errorf("rowcodec: expected %d values, got %d", len(schema.Fields), len(values))
 	}
 	if err := schema.Validate(); err != nil {
 		return Row{}, err
@@ -51,12 +51,12 @@ func (r Row) EncodeCompacted() ([]byte, error) { return encodeRow(r.Schema, r.Va
 
 func (r Row) EncodeLookupKey(columns ...int) ([]byte, error) {
 	if len(columns) == 0 {
-		return nil, fmt.Errorf("data: at least one key column is required")
+		return nil, fmt.Errorf("rowcodec: at least one key column is required")
 	}
 	buf := make([]byte, 0, 32)
 	for _, idx := range columns {
 		if idx < 0 || idx >= len(r.Values) {
-			return nil, fmt.Errorf("data: key column index %d out of range", idx)
+			return nil, fmt.Errorf("rowcodec: key column index %d out of range", idx)
 		}
 		part, err := encodeCompactedKeyValue(r.Schema.Fields[idx], r.Values[idx])
 		if err != nil {
@@ -200,7 +200,7 @@ func decodeLogRecords(schema Schema, payload []byte) ([][]any, error) {
 
 func encodeKvRecord(schema Schema, values []any, indexed bool) ([]byte, error) {
 	if len(schema.Fields) == 0 {
-		return nil, fmt.Errorf("data: kv schema has no fields")
+		return nil, fmt.Errorf("rowcodec: kv schema has no fields")
 	}
 	keyPayload, err := encodeKvKey(schema.Fields[0], values[0], indexed)
 	if err != nil {
@@ -223,7 +223,7 @@ func encodeRow(schema Schema, values []any, indexed bool) ([]byte, error) {
 		return nil, err
 	}
 	if len(values) != len(schema.Fields) {
-		return nil, fmt.Errorf("data: expected %d values, got %d", len(schema.Fields), len(values))
+		return nil, fmt.Errorf("rowcodec: expected %d values, got %d", len(schema.Fields), len(values))
 	}
 
 	nullBits := make([]byte, nullBitsSize(len(values)))
@@ -236,7 +236,7 @@ func encodeRow(schema Schema, values []any, indexed bool) ([]byte, error) {
 		}
 		encoded, err := encodeValue(field, values[i], indexed)
 		if err != nil {
-			return nil, fmt.Errorf("data: field %d: %w", i, err)
+			return nil, fmt.Errorf("rowcodec: field %d: %w", i, err)
 		}
 		if indexed && !field.IsFixed() {
 			variableLengths = binary.LittleEndian.AppendUint32(variableLengths, uint32(len(encoded)))
