@@ -531,6 +531,7 @@ Exit criteria:
 - [x] prefix lookup E2E
 - [ ] KV scan lifecycle E2E
 - [ ] lake-enabled read-path E2E if supported in v1
+- [ ] support-matrix-driven parity audit against the upstream Java client
 
 ## Current Known Gaps
 
@@ -585,6 +586,8 @@ Use this section as the short memory of real repo progress.
 
 ### 2026-05-30
 
+- [x] Reworked `demo/fluss-paimon/go-e2e` into a support-matrix-driven harness with named checks
+- [x] Tightened `CLIENT_SUPPORT_MATRIX.md` to distinguish implemented and partial Go surfaces more explicitly
 - [x] Clarified that Java-client feature parity is the guiding product direction for this SDK
 
 ## Decision Log

@@ -7,7 +7,7 @@ It uses:
 - real Fluss services
 - real Flink/Paimon tiering
 - a SQL bootstrap job that creates a simple lake-enabled table
-- a containerized Go test service that connects directly to Fluss and validates multiple SDK feature surfaces
+- a containerized Go test service that connects directly to Fluss and validates SDK support-matrix rows in a named sequence
 
 ## What runs
 
@@ -55,7 +55,7 @@ The bootstrap intentionally stops after schema creation. The demo is focused on 
 Go SDK can connect, inspect metadata, and exercise read-path entry points without depending on a
 long-running Flink insert job.
 
-The Go service then:
+The Go service then runs a matrix-style feature harness:
 
 - connects to Fluss using the Go SDK
 - lists databases and tables
@@ -64,12 +64,12 @@ The Go service then:
 - seeds one indexed log row and one indexed KV row through the Go client
 - validates table metadata for the bootstrap tables
 - runs a real `LimitScan` against the log table
+- exercises `KVScanner` lifecycle behavior against the primary-key table
 - performs a KV lookup against the primary-key table and verifies the stored row round-trip
 - performs a prefix lookup against the prefix-key table and verifies the returned rows round-trip
 - fails the container if any of those paths break against the real Fluss cluster
 
-This demo currently validates admin, metadata, write, log-table scan entry, KV lookup, and prefix
-lookup round-trip against a real cluster.
+The current harness covers the implemented Go rows in [CLIENT_SUPPORT_MATRIX.md](../../CLIENT_SUPPORT_MATRIX.md) and marks partial surfaces explicitly in the run output.
 
 ## Endpoints
 

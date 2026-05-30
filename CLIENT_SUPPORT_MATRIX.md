@@ -17,9 +17,9 @@ These operations live under the table append, scan, upsert, and lookup surfaces.
 | Log | Append | ✔️ | ✔️ |
 | Log | Typed Append | ✔️ |  |
 | Log | Scan | ✔️ | ✔️ |
-| Log | Scan with Projection | ✔️ | ✔️ |
+| Log | Scan with Projection | ✔️ | ~ |
 | Log | Typed Scan | ✔️ |  |
-| Log | Batch Scan with Limit | ✔️ | ~ |
+| Log | Batch Scan with Limit | ✔️ | ✔️ |
 | Primary Key | Upsert | ✔️ | ✔️ |
 | Primary Key | Upsert with Partial Update | ✔️ | ✔️ |
 | Primary Key | Typed Upsert | ✔️ |  |
@@ -29,6 +29,12 @@ These operations live under the table append, scan, upsert, and lookup surfaces.
 | Primary Key | Typed Lookup | ✔️ |  |
 | Primary Key | Batch Scan with Limit | ✔️ |  |
 | Primary Key | Batch Scan (Snapshot) | ✔️ |  |
+
+Go support notes:
+
+- `Scan with Projection` is routed through `FetchLog` in the current Go client, but the demo only exercises projection-disabled reads today.
+- `Batch Scan with Limit` is represented by `LimitScan` for log tables and `KVScanner` lifecycle coverage for key-value tables.
+- `Batch Scan (Snapshot)` and typed table APIs are not exposed as first-class Go SDK surfaces yet.
 
 :::tip
 For more details, see [Table Overview](https://fluss.apache.org/docs/table-design/data-types/).
