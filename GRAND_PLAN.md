@@ -169,6 +169,8 @@ Goal: make the wire layer stable and debuggable.
 - [x] Introduce protobuf code generation workflow
 - [x] Migrate core request builders from dynamic messages to generated protobuf structs
 - [x] Keep generated protobuf code internal and avoid exposing it as the main SDK surface
+- [x] Treat the proto file as the source of truth for internal wire shapes and protocol-adjacent interfaces
+- [x] Prefer generated types for SDK internals and keep handwritten wrappers thin and Go-idiomatic
 
 ### Core
 
@@ -567,6 +569,7 @@ Use this section as the short memory of real repo progress.
 - [x] Migrated admin, write, lookup, fetch, limit-scan, and KV-scan request builders to generated protobuf types
 - [x] Migrated hot-path table response parsing from reflection-heavy dynamic messages to generated protobuf responses
 - [x] Removed `InvokeDynamic`, deleted dynamic proto registry usage, and migrated mock integration tests to generated protobuf fixtures
+- [x] Documented proto-first refactor rule for SDK internals and protocol-adjacent interfaces
 
 ## Decision Log
 

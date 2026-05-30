@@ -75,11 +75,14 @@ Agents should treat the Fluss `.proto` contract as the implementation foundation
 - regenerate protobuf Go code before wiring new RPC request/response handling
 - prefer generated protobuf message types over reflection or dynamic message construction
 - keep generated protobuf types internal to the SDK implementation rather than exposing them as the public API
+- when practical, derive SDK-facing wire models, table request/response types, and protocol-adjacent interfaces from proto definitions instead of hand-writing parallel shapes
+- use hand-written Go wrappers only where they improve Go ergonomics around an already-generated protocol core
 
 In practice this means:
 
 - public API design stays Go-native in [client](./client)
 - internal RPC payloads should be expressed with generated types from [internal/proto/gen](./internal/proto/gen)
+- internal type and interface evolution should track the proto file so the wire contract remains the source of truth
 - tests that assert protocol behavior should prefer generated protobuf fixtures over dynamic message building
 
 ## How To Work In This Repo
