@@ -69,12 +69,15 @@ The Go service then runs a matrix-style feature harness:
 - appends and scans a dedicated all-types log row covering scalar, temporal, decimal, and nested `ARRAY/MAP/ROW` codec support
 - upserts primary-key rows through the Go SDK’s table-format-aware KV helper and verifies lookup round-trips
 - applies a primary-key partial update and verifies the untouched column is preserved by a follow-up lookup
+- performs a primary-key limit scan after the partial update and verifies the returned rows reflect the updated compacted-table state
 - deletes a primary-key row and verifies lookup returns no value
 - performs a prefix lookup against the prefix-key table and verifies the returned rows by membership rather than unsafe ordering assumptions
 - fails the container if any of those paths break against the real Fluss cluster
 
 The current harness is the canonical support-contract E2E for the implemented Go rows in [CLIENT_SUPPORT_MATRIX.md](../../CLIENT_SUPPORT_MATRIX.md).
 For overlapping features, the behavioral reference is the upstream Java client at `/Users/administrator/Documents/Labs/fluss/fluss-client`, adapted to the Go-native public API.
+
+The primary-key coverage is now exercised on Fluss `COMPACTED` KV tables, so the demo proves the Go SDK against the upstream Java-aligned compacted row/key semantics rather than only against the older indexed-row assumptions.
 
 The demo also proves that these Go SDK operations succeed against a real Fluss deployment configured with Paimon-backed lakehouse infrastructure. It does not claim extra lake-specific Go APIs beyond the operations it actually executes.
 
